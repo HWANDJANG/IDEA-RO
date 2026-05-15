@@ -1,0 +1,6 @@
+# 크롤러는 Vercel 함수가 아닌 로컬에서만 실행되므로 배포에서 제외.
+crawlers/
+run_crawler.py
+db.py
+planner/demo.py
+planner/web.py

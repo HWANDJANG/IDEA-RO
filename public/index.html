@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서류 만료 체커 데모</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e2e5ea;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --urgent: #dc2626;
+    --high: #ea580c;
+    --normal: #2563eb;
+    --valid: #16a34a;
+    --no-expiry: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", "맑은 고딕", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+  }
+  header {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 18px 24px;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .topbar-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .ics-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    text-decoration: none; color: var(--text);
+    background: #eef4ff; border: 1px solid #c7d8f5;
+    padding: 6px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 500;
+  }
+  .ics-link:hover { background: #dbe7fb; }
+  .ics-link.muted { background: #f3f4f6; border-color: var(--border); color: var(--muted); }
+
+  main {
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
+  }
+  .panel h2 { margin: 0 0 14px; font-size: 15px; }
+
+  .scenario-row {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
+    padding-bottom: 14px; border-bottom: 1px dashed var(--border);
+  }
+
+  button {
+    border: 1px solid var(--border); background: white; color: var(--text);
+    padding: 7px 12px; border-radius: 7px; cursor: pointer; font-size: 13px;
+    font-family: inherit;
+  }
+  button:hover { background: #f3f4f6; }
+  button.primary {
+    background: var(--primary); color: white; border-color: var(--primary);
+    padding: 10px 18px; font-weight: 600; font-size: 14px;
+  }
+  button.primary:hover { background: var(--primary-hover); }
+  button.add { font-size: 12px; padding: 4px 9px; }
+  button.del { padding: 4px 9px; color: var(--muted); font-size: 14px; line-height: 1; }
+
+  label {
+    display: block; font-size: 12px; color: var(--muted);
+    margin-bottom: 4px; margin-top: 14px; font-weight: 500;
+  }
+  input[type="date"], select, input[type="number"] {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 7px; font-size: 13px; font-family: inherit; background: white;
+  }
+
+  .doc-row {
+    display: grid;
+    grid-template-columns: 1fr 110px auto;
+    gap: 8px; margin-bottom: 6px; align-items: center;
+  }
+  .doc-row.user { grid-template-columns: 1fr 150px auto; }
+
+  .row-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 18px; margin-bottom: 6px;
+  }
+  .row-header label { margin: 0; }
+
+  .submit-row { margin-top: 22px; text-align: right; }
+
+  .result-card {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; font-size: 13px;
+  }
+  .result-card.expired, .result-card.urgent { border-left-color: var(--urgent); }
+  .result-card.expiring_soon, .result-card.high { border-left-color: var(--high); }
+  .result-card.valid, .result-card.no_expiry { border-left-color: var(--valid); }
+  .result-card.normal { border-left-color: var(--normal); }
+
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    padding: 2px 7px; border-radius: 4px; color: white;
+    margin-right: 6px; letter-spacing: 0.3px;
+  }
+  .badge.expired, .badge.urgent { background: var(--urgent); }
+  .badge.expiring_soon, .badge.high { background: var(--high); }
+  .badge.valid, .badge.no_expiry { background: var(--valid); }
+  .badge.normal { background: var(--normal); }
+
+  .result-card .title { font-weight: 600; margin-bottom: 4px; }
+  .result-card .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+  .empty {
+    color: var(--muted); font-size: 13px; text-align: center;
+    padding: 22px; background: #fafafa; border-radius: 8px;
+  }
+  .section-h {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+    margin-top: 18px; margin-bottom: 8px; color: var(--muted);
+    text-transform: uppercase;
+  }
+  .section-h:first-of-type { margin-top: 0; }
+
+  .tasks-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 18px; margin-bottom: 8px;
+  }
+
+  .error {
+    background: #fef2f2; border: 1px solid #fecaca; color: var(--urgent);
+    padding: 10px 12px; border-radius: 7px; font-size: 13px; margin-bottom: 12px;
+  }
+  .summary {
+    background: #f3f4f6; padding: 10px 14px; border-radius: 8px;
+    font-size: 12.5px; color: var(--muted); margin-bottom: 14px;
+  }
+  .summary b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>서류 만료 체커 데모</h1>
+  <p>"발급 후 N일 이내" 요구 서류가 제출일 기준 만료되는지 자동으로 잡아내는 MVP</p>
+  <div class="topbar-actions">
+    <a class="ics-link" href="/api/ics/announcements?source=nrf" download>NRF 마감일 .ics</a>
+    <a class="ics-link" href="/api/ics/announcements" download>전체 공고 마감일 .ics</a>
+    <a class="ics-link muted" href="/api/ics/announcements?all=1" download>마감 지난 공고 포함</a>
+  </div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>입력</h2>
+
+    <div class="scenario-row">
+      <button onclick="loadScenario(1)">시나리오 1: 만료 직전</button>
+      <button onclick="loadScenario(2)">시나리오 2: 신규 발급</button>
+      <button onclick="loadScenario(3)">시나리오 3: 혼합</button>
+      <button onclick="clearForm()">초기화</button>
+    </div>
+
+    <label>공고 마감일</label>
+    <input type="date" id="deadline" value="2026-06-30">
+
+    <div class="row-header">
+      <label style="margin:0">요구 서류</label>
+      <button class="add" onclick="addRequired()">+ 추가</button>
+    </div>
+    <div id="required-list"></div>
+
+    <div class="row-header">
+      <label style="margin:0">보유 서류 (선택)</label>
+      <button class="add" onclick="addUserDoc()">+ 추가</button>
+    </div>
+    <div id="user-list"></div>
+
+    <div class="submit-row">
+      <button class="primary" onclick="check()">검증하기</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>결과</h2>
+    <div id="error-area"></div>
+    <div id="summary-area"></div>
+
+    <div class="section-h">보유 서류 검증</div>
+    <div id="checks-area"></div>
+
+    <div class="tasks-header">
+      <div class="section-h" style="margin:0">발급 태스크</div>
+      <button id="ics-tasks-btn" class="add" onclick="downloadTasksIcs()" style="display:none">.ics 로 받기</button>
+    </div>
+    <div id="tasks-area"></div>
+  </section>
+</main>
+
+<script>
+let docNames = [];
+let lastTasks = [];   // 가장 최근 검증 결과의 발급 태스크 (ICS 다운로드용)
+
+async function loadMaster() {
+  try {
+    const res = await fetch("/api/documents");
+    const data = await res.json();
+    docNames = data.documents.map(d => d.name);
+  } catch (e) { docNames = []; }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+function docSelect(value = "") {
+  const opts = docNames.map(n =>
+    `<option value="${escapeHtml(n)}" ${n === value ? "selected" : ""}>${escapeHtml(n)}</option>`
+  ).join("");
+  return `<select>${opts}</select>`;
+}
+
+function addRequired(name = "", days = 30) {
+  const div = document.createElement("div");
+  div.className = "doc-row";
+  div.innerHTML = `
+    ${docSelect(name)}
+    <input type="number" min="1" placeholder="유효일수" value="${days}">
+    <button class="del" onclick="this.parentNode.remove()">×</button>
+  `;
+  document.getElementById("required-list").appendChild(div);
+}
+
+function addUserDoc(name = "", issuedDate = "") {
+  const div = document.createElement("div");
+  div.className = "doc-row user";
+  div.innerHTML = `
+    ${docSelect(name)}
+    <input type="date" value="${issuedDate}">
+    <button class="del" onclick="this.parentNode.remove()">×</button>
+  `;
+  document.getElementById("user-list").appendChild(div);
+}
+
+function clearForm() {
+  document.getElementById("required-list").innerHTML = "";
+  document.getElementById("user-list").innerHTML = "";
+  document.getElementById("error-area").innerHTML = "";
+  document.getElementById("summary-area").innerHTML = "";
+  document.getElementById("checks-area").innerHTML = "";
+  document.getElementById("tasks-area").innerHTML = "";
+}
+
+function loadScenario(n) {
+  clearForm();
+  if (n === 1) {
+    document.getElementById("deadline").value = "2026-06-30";
+    addRequired("납세증명서", 30);
+    addUserDoc("납세증명서", "2026-05-20");
+  } else if (n === 2) {
+    document.getElementById("deadline").value = "2026-07-15";
+    addRequired("사업자등록증명", 90);
+    addRequired("납세증명서", 30);
+    addRequired("법인등기부등본", 90);
+    addRequired("4대보험 완납증명서", 30);
+  } else if (n === 3) {
+    document.getElementById("deadline").value = "2026-08-01";
+    addRequired("사업자등록증명", 90);
+    addRequired("납세증명서", 30);
+    addUserDoc("사업자등록증명", "2026-07-25");
+    addUserDoc("납세증명서", "2026-06-01");
+  }
+  check();
+}
+
+async function check() {
+  const deadline = document.getElementById("deadline").value;
+  const required = [];
+  document.querySelectorAll("#required-list .doc-row").forEach(row => {
+    const name = row.querySelector("select").value;
+    const days = parseInt(row.querySelector("input[type=number]").value, 10);
+    required.push({ name, required_within_days: Number.isFinite(days) ? days : null });
+  });
+  const user_documents = [];
+  document.querySelectorAll("#user-list .doc-row").forEach(row => {
+    const name = row.querySelector("select").value;
+    const issued = row.querySelector("input[type=date]").value;
+    if (issued) user_documents.push({ name, issued_date: issued });
+  });
+
+  document.getElementById("error-area").innerHTML = "";
+  if (!deadline) return showError("공고 마감일을 입력해주세요.");
+  if (required.length === 0) return showError("요구 서류를 1개 이상 추가해주세요.");
+
+  try {
+    const res = await fetch("/api/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deadline, required_docs: required, user_documents }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "검증 실패" }));
+      return showError(err.error || "검증 실패");
+    }
+    renderResults(await res.json());
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function showError(msg) {
+  document.getElementById("error-area").innerHTML = `<div class="error">${escapeHtml(msg)}</div>`;
+}
+
+const STATUS_LABEL = {
+  valid: "유효", expiring_soon: "임박", expired: "만료", no_expiry: "유효(만료없음)",
+};
+
+async function downloadTasksIcs() {
+  if (!lastTasks.length) return;
+  const res = await fetch("/api/ics/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tasks: lastTasks, calendar_name: "서류 발급 일정" }),
+  });
+  if (!res.ok) {
+    showError("ICS 생성 실패");
+    return;
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "document-tasks.ics";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderResults(data) {
+  lastTasks = data.tasks || [];
+  const icsBtn = document.getElementById("ics-tasks-btn");
+  if (icsBtn) icsBtn.style.display = lastTasks.length ? "inline-block" : "none";
+  const expired = data.checks.filter(c => c.status === "expired").length;
+  const expiringSoon = data.checks.filter(c => c.status === "expiring_soon").length;
+  const total = data.required_docs.length;
+  document.getElementById("summary-area").innerHTML = `
+    <div class="summary">
+      마감 <b>${data.deadline}</b> · 요구 <b>${total}건</b>
+      · 보유 검증 <b>${data.checks.length}건</b> (만료 ${expired} / 임박 ${expiringSoon})
+      · 발급 태스크 <b>${data.tasks.length}건</b>
+    </div>
+  `;
+
+  const checksEl = document.getElementById("checks-area");
+  if (!data.checks.length) {
+    checksEl.innerHTML = `<div class="empty">보유한 서류 없음</div>`;
+  } else {
+    checksEl.innerHTML = data.checks.map(c => {
+      const rw = c.reissue_window
+        ? `<div class="meta">재발급 권장 구간: ${c.reissue_window[0]} ~ ${c.reissue_window[1]}</div>`
+        : "";
+      return `
+        <div class="result-card ${c.status}">
+          <div class="title">
+            <span class="badge ${c.status}">${STATUS_LABEL[c.status] || c.status}</span>
+            ${escapeHtml(c.name)} <span class="meta" style="display:inline">(발급일 ${c.issued_date})</span>
+          </div>
+          <div>${escapeHtml(c.message)}</div>
+          ${rw}
+        </div>
+      `;
+    }).join("");
+  }
+
+  const tasksEl = document.getElementById("tasks-area");
+  if (!data.tasks.length) {
+    tasksEl.innerHTML = `<div class="empty">모든 서류가 유효합니다. 새로 발급할 게 없습니다.</div>`;
+  } else {
+    tasksEl.innerHTML = data.tasks.map(t => `
+      <div class="result-card ${t.priority}">
+        <div class="title">
+          <span class="badge ${t.priority}">${t.priority.toUpperCase()}</span>
+          ${escapeHtml(t.task)}
+        </div>
+        <div class="meta">발급 권장 구간: ${t.earliest_date} ~ ${t.due_date}</div>
+        <div>${escapeHtml(t.reason)}</div>
+      </div>
+    `).join("");
+  }
+}
+
+(async () => {
+  await loadMaster();
+  loadScenario(1);   // 첫 로드시 시나리오 1 자동 표시
+})();
+</script>
+</body>
+</html>
