@@ -263,6 +263,57 @@
   }
   .wheel-item:hover { background: #f9fafb; }
 
+  /* 서류명 autocomplete */
+  .autocomplete { position: relative; }
+  .autocomplete input[type="text"] {
+    width: 100%; padding: 9px 12px;
+    border: 1px solid var(--border); border-radius: 7px;
+    font-size: 13px; font-family: inherit; background: white;
+  }
+  .autocomplete input[type="text"]:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  }
+  .autocomplete-list {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: white; border: 1px solid var(--border);
+    border-radius: 8px; max-height: 320px; overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+    z-index: 20; display: none;
+  }
+  .autocomplete-list.open { display: block; }
+  .autocomplete-item {
+    padding: 10px 12px; cursor: pointer;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .autocomplete-item:last-child { border-bottom: none; }
+  .autocomplete-item.active,
+  .autocomplete-item:hover { background: #eef4ff; }
+  .autocomplete-item .ai-row1 {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+  .autocomplete-item .ai-name {
+    font-weight: 600; font-size: 13px; color: var(--text);
+  }
+  .autocomplete-item .ai-cat {
+    display: inline-block; font-size: 10.5px;
+    background: #e5e7eb; color: var(--muted);
+    padding: 1px 7px; border-radius: 10px;
+  }
+  .autocomplete-item .ai-meta {
+    font-size: 11.5px; color: var(--muted); margin-top: 2px;
+  }
+  .autocomplete-item mark {
+    background: #fef08a; color: inherit; padding: 0;
+  }
+  .autocomplete-empty {
+    padding: 18px; text-align: center; color: var(--muted); font-size: 12.5px;
+  }
+  .autocomplete-selected-hint {
+    margin-top: 4px; font-size: 11.5px; color: var(--valid); font-weight: 600;
+    min-height: 14px;
+  }
+
   /* 공고 매칭 패널 */
   .announcement-card {
     border: 1px solid var(--border); border-radius: 10px;
@@ -347,8 +398,13 @@
       <div id="my-docs-list"></div>
 
       <div class="section-h">새 서류 추가</div>
-      <label style="margin-top:4px">서류명</label>
-      <select id="add-name"></select>
+      <label style="margin-top:4px">서류명 (검색)</label>
+      <div class="autocomplete" id="ac-doc">
+        <input type="text" id="ac-doc-input"
+               placeholder="예: 납세, 등기, 보험, 홈택스..." autocomplete="off">
+        <div class="autocomplete-list" id="ac-doc-list"></div>
+      </div>
+      <div class="autocomplete-selected-hint" id="ac-doc-hint"></div>
 
       <label>발급일</label>
       <div class="wheel-wrap">
@@ -470,9 +526,15 @@
 const LS_DOCS = "planner_user_docs_v1";
 const LS_BTYPE = "planner_business_type_v1";
 
-let docNames = [];
+let docNames = [];   // 마스터 키 배열 (기존 select용)
+let docsFull = [];   // 전체 spec (autocomplete 검색용)
 let lastTasks = [];
 let announcementsCache = [];
+
+const CATEGORY_LABEL = {
+  identity: "신분", tax: "세무", corporate: "법인",
+  social_insurance: "사회보험", real_estate: "부동산", self_prepared: "자체보관",
+};
 
 function escapeHtml(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
@@ -482,8 +544,10 @@ async function loadMaster() {
   try {
     const res = await fetch("/api/documents");
     const data = await res.json();
-    docNames = data.documents.map(d => d.name);
-  } catch (e) { docNames = []; }
+    docsFull = data.documents || [];
+    // 기존 select(수동 검증 탭의 doc-row 등)는 키 이름 사용 — 호환 유지
+    docNames = docsFull.map(d => d.key || d.name);
+  } catch (e) { docsFull = []; docNames = []; }
 }
 
 function docSelect(value = "") {
@@ -525,10 +589,118 @@ function setBusinessType(v) {
     b.classList.toggle("active", b.dataset.value === v));
 }
 
-function fillAddNameSelect() {
-  const sel = document.getElementById("add-name");
-  if (!sel) return;
-  sel.innerHTML = docNames.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+// ─── 서류명 검색 autocomplete ─────────────────────────────────────────────
+function _markMatch(text, q) {
+  if (!q) return escapeHtml(text);
+  const lo = text.toLowerCase();
+  const ql = q.toLowerCase();
+  const idx = lo.indexOf(ql);
+  if (idx < 0) return escapeHtml(text);
+  return escapeHtml(text.slice(0, idx))
+       + "<mark>" + escapeHtml(text.slice(idx, idx + q.length)) + "</mark>"
+       + escapeHtml(text.slice(idx + q.length));
+}
+
+function searchDocs(q) {
+  const ql = (q || "").trim().toLowerCase();
+  if (!ql) return docsFull.slice();
+  return docsFull.filter(d => {
+    const haystack = [
+      d.key, d.name, d.issuing_authority,
+      CATEGORY_LABEL[d.category] || "",
+      d.typical_usage || "",
+    ].join(" ").toLowerCase();
+    return haystack.includes(ql);
+  });
+}
+
+function setupDocAutocomplete() {
+  const input = document.getElementById("ac-doc-input");
+  const list = document.getElementById("ac-doc-list");
+  const hint = document.getElementById("ac-doc-hint");
+  if (!input || !list) return;
+
+  let currentResults = [];
+  let activeIdx = -1;
+
+  function render(results, q) {
+    currentResults = results;
+    activeIdx = -1;
+    if (!results.length) {
+      list.innerHTML = `<div class="autocomplete-empty">검색 결과 없음</div>`;
+      list.classList.add("open");
+      return;
+    }
+    list.innerHTML = results.map((d, i) => `
+      <div class="autocomplete-item" data-idx="${i}">
+        <div class="ai-row1">
+          <span class="ai-name">${_markMatch(d.name, q)}</span>
+          <span class="ai-cat">${escapeHtml(CATEGORY_LABEL[d.category] || d.category)}</span>
+        </div>
+        <div class="ai-meta">
+          ${_markMatch(d.issuing_authority, q)} ·
+          ${d.validity_days ? `${d.validity_days}일 유효` : "만료 개념 없음"}
+          ${d.online_issuable ? " · 온라인 발급" : " · 방문 발급"}
+        </div>
+      </div>
+    `).join("");
+    list.classList.add("open");
+
+    list.querySelectorAll(".autocomplete-item").forEach(el => {
+      el.addEventListener("mousedown", e => {
+        e.preventDefault();  // blur 방지
+        select(parseInt(el.dataset.idx, 10));
+      });
+      el.addEventListener("mouseenter", () => {
+        setActive(parseInt(el.dataset.idx, 10));
+      });
+    });
+  }
+
+  function setActive(idx) {
+    activeIdx = idx;
+    list.querySelectorAll(".autocomplete-item").forEach((el, i) =>
+      el.classList.toggle("active", i === idx));
+    const el = list.querySelectorAll(".autocomplete-item")[idx];
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }
+
+  function select(idx) {
+    const d = currentResults[idx];
+    if (!d) return;
+    input.value = d.name;
+    input.dataset.key = d.key;
+    list.classList.remove("open");
+    hint.textContent = `선택됨: ${d.name} (${CATEGORY_LABEL[d.category] || d.category})`;
+  }
+
+  input.addEventListener("focus", () => {
+    render(searchDocs(input.value), input.value);
+  });
+  input.addEventListener("input", () => {
+    input.dataset.key = "";   // 입력 변경 시 이전 선택 무효
+    hint.textContent = "";
+    render(searchDocs(input.value), input.value);
+  });
+  input.addEventListener("keydown", e => {
+    if (!list.classList.contains("open")) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive(Math.min(activeIdx + 1, currentResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive(activeIdx <= 0 ? 0 : activeIdx - 1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeIdx >= 0) select(activeIdx);
+      else if (currentResults.length === 1) select(0);
+    } else if (e.key === "Escape") {
+      list.classList.remove("open");
+    }
+  });
+  input.addEventListener("blur", () => {
+    setTimeout(() => list.classList.remove("open"), 150);
+  });
 }
 
 // ─── 휠 피커 (발급일 입력) ────────────────────────────────────────────
@@ -601,11 +773,22 @@ function setWheelToToday() {
 }
 
 function addMyDoc() {
-  const name = document.getElementById("add-name").value;
+  const input = document.getElementById("ac-doc-input");
+  let name = input.dataset.key;
+
+  // 사용자가 클릭으로 선택하지 않고 정확히 일치하는 이름을 직접 타이핑했을 때 대비
+  if (!name) {
+    const typed = (input.value || "").trim();
+    const exact = docsFull.find(d => d.key === typed || d.name === typed);
+    if (exact) name = exact.key;
+  }
+  if (!name) {
+    return alert("서류명을 검색해 목록에서 선택하세요.");
+  }
+
   const y = getWheelValue("wheel-year");
   const m = getWheelValue("wheel-month");
   const d = getWheelValue("wheel-day");
-  if (!name) return alert("서류명을 선택하세요.");
   if (!y || !m || !d) return alert("발급일을 선택하세요.");
 
   // 유효 날짜 검증 (예: 2월 31일은 invalid)
@@ -620,6 +803,11 @@ function addMyDoc() {
   if (idx >= 0) docs[idx].issued_date = issued;
   else docs.push({ name, issued_date: issued });
   setMyDocs(docs);
+
+  // 입력 초기화
+  input.value = "";
+  input.dataset.key = "";
+  document.getElementById("ac-doc-hint").textContent = "";
 }
 
 function removeMyDoc(name) {
@@ -1041,7 +1229,7 @@ function renderResults(data) {
 // ─── 초기화 ──────────────────────────────────────────────────────────────
 (async () => {
   await loadMaster();
-  fillAddNameSelect();
+  setupDocAutocomplete();
   setBusinessType(getBusinessType());
   setWheelToToday();
   renderMyDocs();

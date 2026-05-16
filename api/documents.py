@@ -19,7 +19,7 @@ from planner.document_master import DOCUMENT_MASTER  # noqa: E402
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         body = json.dumps(
-            {"documents": list(DOCUMENT_MASTER.values())},
+            {"documents": [{"key": k, **v} for k, v in DOCUMENT_MASTER.items()]},
             ensure_ascii=False,
         ).encode("utf-8")
         self.send_response(200)

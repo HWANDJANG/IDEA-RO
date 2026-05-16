@@ -90,7 +90,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
         elif path == "/api/documents":
-            self._send_json({"documents": list(DOCUMENT_MASTER.values())})
+            self._send_json({
+                "documents": [{"key": k, **v} for k, v in DOCUMENT_MASTER.items()],
+            })
         elif path == "/api/announcements":
             self._handle_announcements_list(parsed.query)
         elif path == "/api/ics/announcements":
