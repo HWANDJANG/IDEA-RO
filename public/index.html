@@ -207,6 +207,62 @@
   }
   .add-form input, .add-form select { margin: 0; }
 
+  /* 휠 피커 — 발급일 입력용 */
+  .wheel-wrap {
+    margin-top: 6px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: white;
+    padding: 8px 6px 6px;
+  }
+  .wheel-labels {
+    display: flex; gap: 6px; padding: 0 4px 4px;
+  }
+  .wheel-labels > div {
+    flex: 1; text-align: center;
+    font-size: 11.5px; color: var(--muted); font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .wheel-picker {
+    position: relative;
+    display: flex; gap: 6px;
+  }
+  .wheel-hl {
+    position: absolute; left: 0; right: 0;
+    top: 50%; transform: translateY(-50%);
+    height: 38px; pointer-events: none;
+    border-top: 1px solid #d1d5db;
+    border-bottom: 1px solid #d1d5db;
+    background: rgba(37, 99, 235, 0.05);
+    z-index: 1;
+  }
+  .wheel-col {
+    flex: 1; height: 190px;
+    overflow-y: auto; overflow-x: hidden;
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    position: relative;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    mask-image: linear-gradient(180deg, transparent 0, black 22%, black 78%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, black 22%, black 78%, transparent 100%);
+  }
+  .wheel-col::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  .wheel-pad { height: 76px; pointer-events: none; }   /* (190 - 38) / 2 ≈ 76 */
+  .wheel-item {
+    height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    scroll-snap-align: center;
+    font-size: 14px; color: var(--muted);
+    cursor: pointer;
+    transition: color 0.12s ease, font-size 0.12s ease, font-weight 0.12s ease;
+    user-select: none;
+  }
+  .wheel-item.is-center {
+    color: var(--primary); font-weight: 700; font-size: 17px;
+  }
+  .wheel-item:hover { background: #f9fafb; }
+
   /* 공고 매칭 패널 */
   .announcement-card {
     border: 1px solid var(--border); border-radius: 10px;
@@ -291,10 +347,26 @@
       <div id="my-docs-list"></div>
 
       <div class="section-h">새 서류 추가</div>
-      <div class="add-form">
-        <select id="add-name"></select>
-        <input type="date" id="add-issued">
-        <button class="primary" onclick="addMyDoc()" style="padding:8px 14px">추가</button>
+      <label style="margin-top:4px">서류명</label>
+      <select id="add-name"></select>
+
+      <label>발급일</label>
+      <div class="wheel-wrap">
+        <div class="wheel-labels">
+          <div>년</div>
+          <div>월</div>
+          <div>일</div>
+        </div>
+        <div class="wheel-picker">
+          <div class="wheel-hl"></div>
+          <div class="wheel-col" id="wheel-year"></div>
+          <div class="wheel-col" id="wheel-month"></div>
+          <div class="wheel-col" id="wheel-day"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px; text-align:right;">
+        <button class="primary" onclick="addMyDoc()" style="padding:10px 22px">추가</button>
       </div>
     </div>
   </section>
@@ -459,16 +531,95 @@ function fillAddNameSelect() {
   sel.innerHTML = docNames.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
 }
 
+// ─── 휠 피커 (발급일 입력) ────────────────────────────────────────────
+function buildWheel(colId, values, defaultValue) {
+  const col = document.getElementById(colId);
+  if (!col) return;
+  col.innerHTML = "";
+  const pad1 = document.createElement("div"); pad1.className = "wheel-pad";
+  const pad2 = document.createElement("div"); pad2.className = "wheel-pad";
+  col.appendChild(pad1);
+  values.forEach(v => {
+    const item = document.createElement("div");
+    item.className = "wheel-item";
+    item.dataset.value = v;
+    item.textContent = v;
+    item.addEventListener("click", () => {
+      item.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    col.appendChild(item);
+  });
+  col.appendChild(pad2);
+
+  // 디폴트 값으로 스크롤
+  const target = col.querySelector(`.wheel-item[data-value="${defaultValue}"]`);
+  if (target) {
+    // scrollIntoView 가 부드러운 애니메이션을 일으키지 않게 직접 scrollTop 조작
+    col.scrollTop = target.offsetTop - (col.clientHeight / 2) + (target.offsetHeight / 2);
+  }
+  _updateWheelCenter(col);
+
+  let timer = null;
+  col.addEventListener("scroll", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => _updateWheelCenter(col), 50);
+  });
+}
+
+function _updateWheelCenter(col) {
+  const rect = col.getBoundingClientRect();
+  const centerY = rect.top + rect.height / 2;
+  let best = null, bestDist = Infinity;
+  col.querySelectorAll(".wheel-item").forEach(item => {
+    const ir = item.getBoundingClientRect();
+    const dist = Math.abs(ir.top + ir.height / 2 - centerY);
+    if (dist < bestDist) { bestDist = dist; best = item; }
+  });
+  col.querySelectorAll(".wheel-item").forEach(it => {
+    it.classList.toggle("is-center", it === best);
+  });
+}
+
+function getWheelValue(colId) {
+  const c = document.getElementById(colId).querySelector(".wheel-item.is-center");
+  return c ? parseInt(c.dataset.value, 10) : null;
+}
+
+function setWheelToToday() {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = today.getMonth() + 1;
+  const d = today.getDate();
+  // 년: 최근 3년 (현재 -2 ~ 현재). 서류 유효기간 최대 1년이라 2~3년이면 충분.
+  const years = [];
+  for (let i = y - 2; i <= y; i++) years.push(i);
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+  buildWheel("wheel-year", years, y);
+  buildWheel("wheel-month", months, m);
+  buildWheel("wheel-day", days, d);
+}
+
 function addMyDoc() {
   const name = document.getElementById("add-name").value;
-  const issued = document.getElementById("add-issued").value;
-  if (!name || !issued) return alert("서류명과 발급일을 모두 입력하세요.");
+  const y = getWheelValue("wheel-year");
+  const m = getWheelValue("wheel-month");
+  const d = getWheelValue("wheel-day");
+  if (!name) return alert("서류명을 선택하세요.");
+  if (!y || !m || !d) return alert("발급일을 선택하세요.");
+
+  // 유효 날짜 검증 (예: 2월 31일은 invalid)
+  const test = new Date(y, m - 1, d);
+  if (test.getFullYear() !== y || test.getMonth() !== m - 1 || test.getDate() !== d) {
+    return alert(`존재하지 않는 날짜입니다 (${y}-${m}-${d}).`);
+  }
+  const issued = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
   const docs = getMyDocs();
-  const idx = docs.findIndex(d => d.name === name);
+  const idx = docs.findIndex(x => x.name === name);
   if (idx >= 0) docs[idx].issued_date = issued;
   else docs.push({ name, issued_date: issued });
   setMyDocs(docs);
-  document.getElementById("add-issued").value = "";
 }
 
 function removeMyDoc(name) {
@@ -892,6 +1043,7 @@ function renderResults(data) {
   await loadMaster();
   fillAddNameSelect();
   setBusinessType(getBusinessType());
+  setWheelToToday();
   renderMyDocs();
   // 수동 검증 탭의 기본 화면도 준비
   document.querySelectorAll("#required-list, #user-list").forEach(el => el.innerHTML = "");
