@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from planner.checker import (  # noqa: E402
     build_preparation_schedule,
     check_document_validity,
+    filter_by_business_type,
 )
 
 
@@ -66,7 +67,15 @@ class handler(BaseHTTPRequestHandler):
         except (KeyError, ValueError, TypeError) as e:
             return self._error(400, f"bad input: {e}")
 
-        req_map = {r["name"]: r for r in required}
+        business_type = data.get("business_type")
+        if business_type not in (None, "", "individual", "corporate"):
+            return self._error(400, "business_type must be 'individual', 'corporate', or null")
+        if business_type == "":
+            business_type = None
+
+        filtered_required, skipped = filter_by_business_type(required, business_type)
+
+        req_map = {r["name"]: r for r in filtered_required}
         checks = []
         for ud in user_docs:
             req = req_map.get(ud["name"], {})
@@ -78,10 +87,14 @@ class handler(BaseHTTPRequestHandler):
                 "issued_date": ud["issued_date"].isoformat(),
                 **_serialize_check(result),
             })
-        tasks = build_preparation_schedule(deadline, required, user_docs or None)
+        tasks = build_preparation_schedule(
+            deadline, required, user_docs or None, user_business_type=business_type,
+        )
         self._send_json({
             "deadline": deadline.isoformat(),
-            "required_docs": required,
+            "business_type": business_type,
+            "required_docs": filtered_required,
+            "skipped_documents": skipped,
             "checks": checks,
             "tasks": [_serialize_task(t) for t in tasks],
         })

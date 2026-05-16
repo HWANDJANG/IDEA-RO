@@ -1,17 +1,32 @@
 """정부지원사업 신청에 자주 요구되는 서류의 마스터 사전.
 
-발급처/유효기간/온라인 발급 가능 여부 등 정적인 정보만 담는다.
-"발급 후 N개월 이내" 같은 사업별 요구는 여기 들어가지 않고,
-공고 단위에서 `required_within_days`로 오버라이드한다.
+발급처/유효기간/발급 소요시간/발급 URL/카테고리/적용 사업자 유형 등 정적 정보만
+담는다. "발급 후 N개월 이내" 같은 사업별 요구는 여기에 들어가지 않고, 공고 단위에서
+`required_within_days` 로 오버라이드한다.
 
-validity_days가 None인 서류는 자체 만료 개념이 없다.
-다만 사업에 따라 "최근 N개월 이내" 발급분만 받는 경우가 있으므로,
-이때는 호출 측에서 `required_within_days`를 함께 전달해야 한다.
+`validity_days` 가 None 인 서류는 자체 만료 개념이 없다. 사업에 따라 "최근 N개월
+이내" 발급분만 받는 경우가 있으므로 그때는 호출 측에서 `required_within_days` 를
+함께 전달해야 한다.
+
+`applicable_to` 는 어느 사업자 유형에 해당하는지를 표시한다. 개인사업자에게
+법인등기부등본을 요구할 일이 없으므로 이 필드로 필터링하면 불필요한 발급 태스크가
+자동 제외된다.
 """
 
 from __future__ import annotations
 
-from typing import Optional, TypedDict
+from typing import Literal, Optional, TypedDict
+
+
+DocumentCategory = Literal[
+    "identity",          # 신분 관련
+    "tax",               # 사업자/세무
+    "corporate",         # 법인 전용
+    "social_insurance",  # 사회보험
+    "real_estate",       # 부동산/사업장
+    "self_prepared",     # 본인 보관/작성
+]
+BusinessApplicability = Literal["individual", "corporate", "all"]
 
 
 class DocumentSpec(TypedDict):
@@ -20,77 +35,414 @@ class DocumentSpec(TypedDict):
     validity_days: Optional[int]
     online_issuable: bool
     typical_usage: str
+    online_lead_days: Optional[int]
+    offline_lead_days: Optional[int]
+    issuing_url: Optional[str]
+    category: DocumentCategory
+    applicable_to: list[BusinessApplicability]
+    notes: Optional[str]
 
 
 DOCUMENT_MASTER: dict[str, DocumentSpec] = {
+    # ─── 신분 (identity, 5종) ──────────────────────────────────────────────
+    "주민등록등본": {
+        "name": "주민등록표 등본",
+        "issuing_authority": "정부24",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "거주지/세대 구성 증빙. 청년/지역 연계 사업에서 요구.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.gov.kr/portal/main",
+        "category": "identity",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+    "주민등록초본": {
+        "name": "주민등록표 초본",
+        "issuing_authority": "정부24",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "병역·이력 등 상세 개인정보 증빙.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.gov.kr/portal/main",
+        "category": "identity",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+    "인감증명서": {
+        "name": "인감증명서",
+        "issuing_authority": "정부24/주민센터",
+        "validity_days": 90,
+        "online_issuable": False,
+        "typical_usage": "협약·계약 체결 시 필수. 본인 발급 한정으로 방문 권장.",
+        "online_lead_days": None,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.gov.kr/portal/main",
+        "category": "identity",
+        "applicable_to": ["all"],
+        "notes": "본인이 직접 방문 발급해야 함. 대리 발급은 위임장 필요.",
+    },
+    "본인서명사실확인서": {
+        "name": "본인서명사실확인서",
+        "issuing_authority": "정부24",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "인감 대체용. 협약서 서명의 본인 사실 인증.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.gov.kr/portal/main",
+        "category": "identity",
+        "applicable_to": ["all"],
+        "notes": "인감증명서 대신 사용 가능.",
+    },
+    "가족관계증명서": {
+        "name": "가족관계증명서",
+        "issuing_authority": "대법원 전자가족관계등록시스템",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "가족 구성 증빙. 청년·가족 지원 사업.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://efamily.scourt.go.kr/",
+        "category": "identity",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+
+    # ─── 사업자/세무 (tax, 8종) ────────────────────────────────────────────
     "사업자등록증명": {
         "name": "사업자등록증명",
         "issuing_authority": "홈택스",
         "validity_days": None,
         "online_issuable": True,
         "typical_usage": "사업자 등록 사실 증빙. 일부 사업은 '최근 3개월 이내' 발급분 요구.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.hometax.go.kr/",
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "자체 만료 개념은 없으나 일부 사업이 '최근 3개월 이내' 발급분 요구.",
+    },
+    "사업자등록증 사본": {
+        "name": "사업자등록증 사본",
+        "issuing_authority": "본인 보관",
+        "validity_days": None,
+        "online_issuable": False,
+        "typical_usage": "사업자등록증 원본의 사본. 원본은 사업장 비치.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "원본은 사업장 비치, 사본을 제출용으로 사용.",
     },
     "납세증명서": {
-        "name": "납세증명서",
+        "name": "국세 납세증명서",
         "issuing_authority": "홈택스",
         "validity_days": 30,
         "online_issuable": True,
-        "typical_usage": "체납 사실이 없음을 증빙. 정부지원사업·입찰 단골 요구.",
-    },
-    "국세납세증명": {
-        "name": "국세납세증명",
-        "issuing_authority": "홈택스",
-        "validity_days": 30,
-        "online_issuable": True,
-        "typical_usage": "국세 완납 증빙. 납세증명서와 함께 묶여 요구되는 경우가 많음.",
+        "typical_usage": "국세 체납 없음 증빙. 정부지원사업·입찰 단골 요구.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.hometax.go.kr/",
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "발급 후 30일 이내 인정이 일반적이나 공고마다 다름.",
     },
     "지방세납세증명": {
-        "name": "지방세납세증명",
+        "name": "지방세 납세증명서",
         "issuing_authority": "위택스",
         "validity_days": 30,
         "online_issuable": True,
-        "typical_usage": "지방세 완납 증빙. 국세 납세증명과 한 세트로 요구됨.",
+        "typical_usage": "지방세 체납 없음 증빙. 국세 납세증명과 한 세트로 요구됨.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.wetax.go.kr/",
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": None,
     },
-    "4대보험 가입자명부": {
-        "name": "4대보험 가입자명부",
-        "issuing_authority": "4대사회보험정보연계센터",
-        "validity_days": 30,
+    "부가가치세 과세표준증명": {
+        "name": "부가가치세 과세표준증명",
+        "issuing_authority": "홈택스",
+        "validity_days": 365,
         "online_issuable": True,
-        "typical_usage": "고용/인력 현황 증빙. 인력지원·고용창출 사업에서 자주 요구.",
+        "typical_usage": "전년도 매출 규모 증빙. 지원금 한도 산정에 활용.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.hometax.go.kr/",
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "회계연도 단위. 직전 사업연도까지 제공.",
     },
-    "4대보험 완납증명서": {
-        "name": "4대보험 완납증명서",
-        "issuing_authority": "건강보험공단·국민연금공단·근로복지공단",
-        "validity_days": 30,
+    "소득금액증명": {
+        "name": "소득금액증명",
+        "issuing_authority": "홈택스",
+        "validity_days": 365,
         "online_issuable": True,
-        "typical_usage": "보험료 완납 증빙. 4개 공단별 각각 발급해야 하는 경우 있음.",
+        "typical_usage": "소득 수준 증빙. 소득 기준 사업·금융 요건.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.hometax.go.kr/",
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "회계연도 단위.",
     },
+    "표준재무제표증명": {
+        "name": "표준재무제표증명",
+        "issuing_authority": "홈택스",
+        "validity_days": 365,
+        "online_issuable": True,
+        "typical_usage": "재무 상태 증빙. 법인·개인 모두 발급 가능.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.hometax.go.kr/",
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": None,
+    },
+    "폐업사실증명": {
+        "name": "폐업사실증명",
+        "issuing_authority": "홈택스",
+        "validity_days": None,
+        "online_issuable": True,
+        "typical_usage": "폐업 사실 증빙. 재창업·재기 지원 사업에서 요구.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.hometax.go.kr/",
+        "category": "tax",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "즉시 발급 가능. 자체 만료 개념은 약함.",
+    },
+
+    # ─── 법인 전용 (corporate, 4종) ────────────────────────────────────────
     "법인등기부등본": {
         "name": "법인등기부등본",
         "issuing_authority": "인터넷등기소",
         "validity_days": 90,
         "online_issuable": True,
         "typical_usage": "법인 등기 사항 증빙. 법인 사업자에 한해 요구.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.iros.go.kr/",
+        "category": "corporate",
+        "applicable_to": ["corporate"],
+        "notes": "주로 '최근 3개월 이내 발급분' 요구.",
     },
-    "인감증명서": {
-        "name": "인감증명서",
-        "issuing_authority": "정부24",
-        "validity_days": 90,
-        "online_issuable": True,
-        "typical_usage": "본인발급분. 협약서·약정서 체결 시 요구.",
+    "주주명부": {
+        "name": "주주명부",
+        "issuing_authority": "본인 작성",
+        "validity_days": None,
+        "online_issuable": False,
+        "typical_usage": "주주 구성 증빙. 법인 자체 작성.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "corporate",
+        "applicable_to": ["corporate"],
+        "notes": "법인이 자체 작성하여 보관.",
     },
-    "주민등록등본": {
-        "name": "주민등록등본",
-        "issuing_authority": "정부24",
-        "validity_days": 90,
-        "online_issuable": True,
-        "typical_usage": "거주지/세대 구성 증빙. 청년/지역 연계 사업에서 요구.",
-    },
-    "사업장 임대차계약서 사본": {
-        "name": "사업장 임대차계약서 사본",
+    "정관": {
+        "name": "정관",
         "issuing_authority": "본인 보관",
         "validity_days": None,
         "online_issuable": False,
-        "typical_usage": "사업장 소재지 증빙. 계약 기간 자체가 유효 범위 역할.",
+        "typical_usage": "법인 정관 사본. 설립 시 원본의 사본 제출.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "corporate",
+        "applicable_to": ["corporate"],
+        "notes": "원본은 법인 보관, 제출은 사본.",
+    },
+    "법인인감증명서": {
+        "name": "법인인감증명서",
+        "issuing_authority": "인터넷등기소/등기소",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "법인 인감 증명. 협약·계약 시 요구.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.iros.go.kr/",
+        "category": "corporate",
+        "applicable_to": ["corporate"],
+        "notes": "대표자 본인 인증 필요.",
+    },
+
+    # ─── 사회보험 (social_insurance, 5종) ──────────────────────────────────
+    "4대보험 가입자명부": {
+        "name": "4대보험 가입자명부",
+        "issuing_authority": "4대사회보험정보연계센터",
+        "validity_days": 30,
+        "online_issuable": True,
+        "typical_usage": "현재 고용/가입 현황 증빙. 인력지원 사업 단골 요구.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.4insure.or.kr/",
+        "category": "social_insurance",
+        "applicable_to": ["individual", "corporate"],
+        "notes": None,
+    },
+    "4대보험 완납증명서": {
+        "name": "4대보험 완납증명서",
+        "issuing_authority": "건강보험공단·국민연금공단·근로복지공단",
+        "validity_days": 30,
+        "online_issuable": True,
+        "typical_usage": "4대보험료 완납 증빙. 공단별 따로 발급되는 경우 있음.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.4insure.or.kr/",
+        "category": "social_insurance",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "건강보험·국민연금·근로복지공단별 각각 발급되는 케이스 있음.",
+    },
+    "건강보험 자격득실 확인서": {
+        "name": "건강보험 자격득실 확인서",
+        "issuing_authority": "정부24/건강보험공단",
+        "validity_days": 30,
+        "online_issuable": True,
+        "typical_usage": "건강보험 자격 변동 이력 증빙.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.nhis.or.kr/",
+        "category": "social_insurance",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+    "개인건강보험료 납부확인서": {
+        "name": "개인건강보험료 납부확인서",
+        "issuing_authority": "정부24/건강보험공단",
+        "validity_days": 30,
+        "online_issuable": True,
+        "typical_usage": "개인 건강보험료 납부 이력 증빙.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.nhis.or.kr/",
+        "category": "social_insurance",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+    "국민연금 가입증명서": {
+        "name": "국민연금 가입증명서",
+        "issuing_authority": "국민연금공단",
+        "validity_days": 30,
+        "online_issuable": True,
+        "typical_usage": "국민연금 가입 사실 증빙.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.nps.or.kr/",
+        "category": "social_insurance",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+
+    # ─── 부동산/사업장 (real_estate, 4종) ──────────────────────────────────
+    "건축물대장": {
+        "name": "건축물대장 (일반/집합)",
+        "issuing_authority": "정부24",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "사업장 건물 정보 증빙.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.gov.kr/portal/main",
+        "category": "real_estate",
+        "applicable_to": ["all"],
+        "notes": "일반/집합 건축물에 따라 양식 다름.",
+    },
+    "토지대장": {
+        "name": "토지대장",
+        "issuing_authority": "정부24",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "토지 정보 증빙.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.gov.kr/portal/main",
+        "category": "real_estate",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+    "사업장 임대차계약서 사본": {
+        "name": "임대차계약서 사본",
+        "issuing_authority": "본인 보관",
+        "validity_days": None,
+        "online_issuable": False,
+        "typical_usage": "사업장 소재 증빙. 계약 기간 자체가 유효 범위 역할.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "real_estate",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "계약 기간 만료 전 갱신본 보관 필요.",
+    },
+    "부동산 등기부등본": {
+        "name": "부동산 등기부등본",
+        "issuing_authority": "인터넷등기소",
+        "validity_days": 90,
+        "online_issuable": True,
+        "typical_usage": "부동산 소유 관계 증빙.",
+        "online_lead_days": 0,
+        "offline_lead_days": 1,
+        "issuing_url": "https://www.iros.go.kr/",
+        "category": "real_estate",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+
+    # ─── 기타/본인 작성 (self_prepared, 4종) ───────────────────────────────
+    "통장 사본": {
+        "name": "통장 사본",
+        "issuing_authority": "본인 보관",
+        "validity_days": None,
+        "online_issuable": False,
+        "typical_usage": "지원금 입금 계좌 증빙. 통장 표지 사본.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "self_prepared",
+        "applicable_to": ["all"],
+        "notes": "개인사업자는 본인 명의, 법인은 법인 명의 통장.",
+    },
+    "신분증 사본": {
+        "name": "신분증 사본",
+        "issuing_authority": "본인 보관",
+        "validity_days": None,
+        "online_issuable": False,
+        "typical_usage": "본인 확인용. 주민등록증/운전면허증/여권 사본.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "self_prepared",
+        "applicable_to": ["all"],
+        "notes": None,
+    },
+    "사업계획서": {
+        "name": "사업계획서",
+        "issuing_authority": "본인 작성",
+        "validity_days": None,
+        "online_issuable": False,
+        "typical_usage": "사업 내용·계획 기술. 공고별 지정 양식 사용.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "self_prepared",
+        "applicable_to": ["individual", "corporate"],
+        "notes": "공고별 지정 양식이 있으면 그 양식 사용.",
+    },
+    "이력서": {
+        "name": "이력서 / 경력증명서",
+        "issuing_authority": "본인 / 이전 직장",
+        "validity_days": None,
+        "online_issuable": False,
+        "typical_usage": "신청자 이력 증빙. 청년창업 등에서 요구.",
+        "online_lead_days": None,
+        "offline_lead_days": None,
+        "issuing_url": None,
+        "category": "self_prepared",
+        "applicable_to": ["all"],
+        "notes": None,
     },
 }

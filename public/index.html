@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>서류 만료 체커 데모</title>
+<title>정부지원사업 서류 체커</title>
 <style>
   :root {
     --bg: #f6f7f9;
@@ -32,11 +32,14 @@
     border-bottom: 1px solid var(--border);
     padding: 18px 24px;
   }
+  header .title-row {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 16px; flex-wrap: wrap;
+  }
   header h1 { margin: 0; font-size: 18px; }
-  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-  .topbar-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  header .sub { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .ics-link {
-    display: inline-flex; align-items: center; gap: 6px;
     text-decoration: none; color: var(--text);
     background: #eef4ff; border: 1px solid #c7d8f5;
     padding: 6px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 500;
@@ -44,28 +47,61 @@
   .ics-link:hover { background: #dbe7fb; }
   .ics-link.muted { background: #f3f4f6; border-color: var(--border); color: var(--muted); }
 
-  main {
-    max-width: 1200px;
-    margin: 24px auto;
+  /* 탭 */
+  .tabs {
+    background: white; border-bottom: 1px solid var(--border);
     padding: 0 24px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
   }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .tab-list { max-width: 1200px; margin: 0 auto; display: flex; gap: 4px; }
+  .tab-btn {
+    background: transparent; border: none;
+    padding: 12px 18px; cursor: pointer; font-family: inherit;
+    font-size: 13.5px; font-weight: 500; color: var(--muted);
+    border-bottom: 2px solid transparent;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--primary); border-bottom-color: var(--primary);
+  }
+  .tab-btn .count {
+    background: #e5e7eb; color: var(--muted);
+    padding: 1px 7px; border-radius: 10px; font-size: 11px; margin-left: 4px;
+  }
+  .tab-btn.active .count { background: var(--primary); color: white; }
 
+  main { max-width: 1200px; margin: 24px auto; padding: 0 24px; }
   .panel {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 22px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px;
   }
   .panel h2 { margin: 0 0 14px; font-size: 15px; }
-
-  .scenario-row {
-    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
-    padding-bottom: 14px; border-bottom: 1px dashed var(--border);
+  .pane { display: none; }
+  .pane.active { display: block; }
+  .grid-2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
   }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* 폼 요소 */
+  label {
+    display: block; font-size: 12px; color: var(--muted);
+    margin-bottom: 4px; margin-top: 14px; font-weight: 500;
+  }
+  input[type="date"], select, input[type="number"], input[type="text"] {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 7px; font-size: 13px; font-family: inherit; background: white;
+  }
+  .doc-row {
+    display: grid; grid-template-columns: 1fr 110px auto;
+    gap: 8px; margin-bottom: 6px; align-items: center;
+  }
+  .doc-row.user { grid-template-columns: 1fr 150px auto; }
+  .row-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 18px; margin-bottom: 6px;
+    gap: 8px;
+  }
+  .row-header label { margin: 0; }
 
   button {
     border: 1px solid var(--border); background: white; color: var(--text);
@@ -80,54 +116,31 @@
   button.primary:hover { background: var(--primary-hover); }
   button.add { font-size: 12px; padding: 4px 9px; }
   button.del { padding: 4px 9px; color: var(--muted); font-size: 14px; line-height: 1; }
-
-  label {
-    display: block; font-size: 12px; color: var(--muted);
-    margin-bottom: 4px; margin-top: 14px; font-weight: 500;
-  }
-  input[type="date"], select, input[type="number"] {
-    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
-    border-radius: 7px; font-size: 13px; font-family: inherit; background: white;
-  }
-
-  .doc-row {
-    display: grid;
-    grid-template-columns: 1fr 110px auto;
-    gap: 8px; margin-bottom: 6px; align-items: center;
-  }
-  .doc-row.user { grid-template-columns: 1fr 150px auto; }
-
-  .row-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-top: 18px; margin-bottom: 6px;
-  }
-  .row-header label { margin: 0; }
+  button.ghost { background: transparent; color: var(--muted); }
 
   .submit-row { margin-top: 22px; text-align: right; }
 
+  /* 결과 카드 */
   .result-card {
     border: 1px solid var(--border);
     border-left: 4px solid var(--border);
     border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; font-size: 13px;
   }
-  .result-card.expired, .result-card.urgent { border-left-color: var(--urgent); }
+  .result-card.expired, .result-card.urgent, .result-card.missing { border-left-color: var(--urgent); }
   .result-card.expiring_soon, .result-card.high { border-left-color: var(--high); }
   .result-card.valid, .result-card.no_expiry { border-left-color: var(--valid); }
   .result-card.normal { border-left-color: var(--normal); }
-
   .badge {
     display: inline-block; font-size: 11px; font-weight: 700;
     padding: 2px 7px; border-radius: 4px; color: white;
     margin-right: 6px; letter-spacing: 0.3px;
   }
-  .badge.expired, .badge.urgent { background: var(--urgent); }
+  .badge.expired, .badge.urgent, .badge.missing { background: var(--urgent); }
   .badge.expiring_soon, .badge.high { background: var(--high); }
   .badge.valid, .badge.no_expiry { background: var(--valid); }
   .badge.normal { background: var(--normal); }
-
   .result-card .title { font-weight: 600; margin-bottom: 4px; }
   .result-card .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
-
   .empty {
     color: var(--muted); font-size: 13px; text-align: center;
     padding: 22px; background: #fafafa; border-radius: 8px;
@@ -138,12 +151,10 @@
     text-transform: uppercase;
   }
   .section-h:first-of-type { margin-top: 0; }
-
   .tasks-header {
     display: flex; justify-content: space-between; align-items: center;
     margin-top: 18px; margin-bottom: 8px;
   }
-
   .error {
     background: #fef2f2; border: 1px solid #fecaca; color: var(--urgent);
     padding: 10px 12px; border-radius: 7px; font-size: 13px; margin-bottom: 12px;
@@ -153,70 +164,247 @@
     font-size: 12.5px; color: var(--muted); margin-bottom: 14px;
   }
   .summary b { color: var(--text); }
+  .notes-box {
+    background: #fefce8; border: 1px solid #fde68a; color: #854d0e;
+    padding: 8px 12px; border-radius: 6px; font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .notes-box .nt-label { font-weight: 700; margin-right: 4px; }
+
+  /* 내 서류 패널 */
+  .seg {
+    display: inline-flex; border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; background: white;
+  }
+  .seg button {
+    border: none; border-radius: 0; padding: 7px 14px;
+    background: white; color: var(--muted); font-weight: 500;
+  }
+  .seg button.active {
+    background: var(--primary); color: white;
+  }
+  .my-doc-card {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 11px 14px; margin-bottom: 8px;
+    display: grid; grid-template-columns: 1fr 110px 150px auto;
+    gap: 12px; align-items: center; font-size: 13px;
+  }
+  @media (max-width: 700px) {
+    .my-doc-card { grid-template-columns: 1fr auto; }
+  }
+  .my-doc-card .name { font-weight: 600; }
+  .my-doc-card .issued { color: var(--muted); font-size: 12px; }
+  .status-pill {
+    font-size: 11px; padding: 2px 8px; border-radius: 11px; font-weight: 700;
+    display: inline-block;
+  }
+  .status-pill.valid, .status-pill.no_expiry { background: #dcfce7; color: #166534; }
+  .status-pill.expiring_soon { background: #ffedd5; color: #9a3412; }
+  .status-pill.expired { background: #fee2e2; color: #991b1b; }
+  .add-form {
+    display: grid; grid-template-columns: 1fr 160px auto;
+    gap: 8px; margin-top: 10px;
+  }
+  .add-form input, .add-form select { margin: 0; }
+
+  /* 공고 매칭 패널 */
+  .announcement-card {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .announcement-card:hover { border-color: #c7d2fe; }
+  .announcement-card .a-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 8px;
+  }
+  .announcement-card .a-title { font-weight: 600; font-size: 14px; line-height: 1.4; }
+  .announcement-card .a-meta {
+    color: var(--muted); font-size: 11.5px; margin-top: 4px;
+  }
+  .announcement-card .a-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+  .fulfillment-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 12px;
+    font-size: 11.5px; font-weight: 700;
+  }
+  .fulfillment-pill.complete { background: #dcfce7; color: #166534; }
+  .fulfillment-pill.partial { background: #ffedd5; color: #9a3412; }
+  .fulfillment-pill.none { background: #fee2e2; color: #991b1b; }
+  .match-detail {
+    margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+    display: none;
+  }
+  .announcement-card.expanded .match-detail { display: block; }
+
+  .scenario-row {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
+    padding-bottom: 14px; border-bottom: 1px dashed var(--border);
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>서류 만료 체커 데모</h1>
-  <p>"발급 후 N일 이내" 요구 서류가 제출일 기준 만료되는지 자동으로 잡아내는 MVP</p>
-  <div class="topbar-actions">
-    <a class="ics-link" href="/api/ics/announcements?source=nrf" download>NRF 마감일 .ics</a>
-    <a class="ics-link" href="/api/ics/announcements" download>전체 공고 마감일 .ics</a>
-    <a class="ics-link muted" href="/api/ics/announcements?all=1" download>마감 지난 공고 포함</a>
+  <div class="title-row">
+    <div>
+      <h1>정부지원사업 서류 체커</h1>
+      <p class="sub">보유 서류 만료를 미리 잡고, 진행 중인 공고와 매칭해 충족 여부를 확인합니다.</p>
+    </div>
+    <div class="topbar-actions">
+      <a class="ics-link" href="/api/ics/announcements?source=nrf" download>NRF 마감일 .ics</a>
+      <a class="ics-link" href="/api/ics/announcements" download>전체 공고 .ics</a>
+      <a class="ics-link muted" href="/api/ics/announcements?all=1" download>마감 지난 공고 포함</a>
+    </div>
   </div>
 </header>
 
+<nav class="tabs">
+  <div class="tab-list">
+    <button class="tab-btn active" data-tab="my-docs">내 서류<span class="count" id="cnt-my-docs">0</span></button>
+    <button class="tab-btn" data-tab="match">공고 매칭<span class="count" id="cnt-match">·</span></button>
+    <button class="tab-btn" data-tab="manual">수동 검증</button>
+  </div>
+</nav>
+
 <main>
-  <section class="panel">
-    <h2>입력</h2>
 
-    <div class="scenario-row">
-      <button onclick="loadScenario(1)">시나리오 1: 만료 직전</button>
-      <button onclick="loadScenario(2)">시나리오 2: 신규 발급</button>
-      <button onclick="loadScenario(3)">시나리오 3: 혼합</button>
-      <button onclick="clearForm()">초기화</button>
-    </div>
+  <!-- 탭 1: 내 서류 -->
+  <section class="pane active" id="pane-my-docs">
+    <div class="panel">
+      <h2>내가 보유한 서류</h2>
+      <p style="margin-top:0; color:var(--muted); font-size:12px;">
+        저장된 서류는 <b>본인 브라우저의 localStorage</b>에만 보관됩니다. 다른 기기/브라우저에서는 보이지 않으며 서버로 전송되지 않습니다.
+      </p>
 
-    <label>공고 마감일</label>
-    <input type="date" id="deadline" value="2026-06-30">
+      <div style="display:flex; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
+        <label style="margin:0">사업체 유형</label>
+        <div class="seg" id="business-type-seg">
+          <button data-value="individual" class="active">개인</button>
+          <button data-value="corporate">법인</button>
+        </div>
+        <button class="ghost" style="margin-left:auto" onclick="exportDocs()">JSON 백업</button>
+        <button class="ghost" onclick="document.getElementById('import-input').click()">JSON 복원</button>
+        <input type="file" id="import-input" accept="application/json" style="display:none" onchange="importDocs(event)">
+      </div>
 
-    <div class="row-header">
-      <label style="margin:0">요구 서류</label>
-      <button class="add" onclick="addRequired()">+ 추가</button>
-    </div>
-    <div id="required-list"></div>
+      <div class="section-h" style="margin-top:22px">보유 목록</div>
+      <div id="my-docs-list"></div>
 
-    <div class="row-header">
-      <label style="margin:0">보유 서류 (선택)</label>
-      <button class="add" onclick="addUserDoc()">+ 추가</button>
-    </div>
-    <div id="user-list"></div>
-
-    <div class="submit-row">
-      <button class="primary" onclick="check()">검증하기</button>
+      <div class="section-h">새 서류 추가</div>
+      <div class="add-form">
+        <select id="add-name"></select>
+        <input type="date" id="add-issued">
+        <button class="primary" onclick="addMyDoc()" style="padding:8px 14px">추가</button>
+      </div>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>결과</h2>
-    <div id="error-area"></div>
-    <div id="summary-area"></div>
+  <!-- 탭 2: 공고 매칭 -->
+  <section class="pane" id="pane-match">
+    <div class="panel">
+      <h2>진행 중인 공고와의 충족 여부</h2>
+      <p style="margin-top:0; color:var(--muted); font-size:12px;">
+        DB에 저장된 공고에 대해 한국 정부지원사업의 <b>기본 요구 서류 프리셋</b>(사업체 유형별)을 적용해 매칭합니다.
+        실제 요구 서류는 첨부 공고문에 적혀 있으므로 <b>최종 확인은 본인 책임</b>입니다.
+      </p>
 
-    <div class="section-h">보유 서류 검증</div>
-    <div id="checks-area"></div>
+      <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; align-items:center">
+        <label style="margin:0;">출처</label>
+        <select id="match-source" onchange="loadAnnouncements()" style="width:auto">
+          <option value="">전체</option>
+          <option value="nrf" selected>NRF (한국연구재단)</option>
+          <option value="bojo">e나라도움</option>
+        </select>
+        <button class="ghost" onclick="loadAnnouncements()">새로고침</button>
+        <span style="margin-left:auto; color:var(--muted); font-size:12px;" id="match-status"></span>
+      </div>
 
-    <div class="tasks-header">
-      <div class="section-h" style="margin:0">발급 태스크</div>
-      <button id="ics-tasks-btn" class="add" onclick="downloadTasksIcs()" style="display:none">.ics 로 받기</button>
+      <div id="announcements-list" style="margin-top:18px"></div>
     </div>
-    <div id="tasks-area"></div>
   </section>
+
+  <!-- 탭 3: 수동 검증 (기존 시나리오) -->
+  <section class="pane" id="pane-manual">
+    <div class="grid-2">
+      <div class="panel">
+        <h2>수동 입력 (시나리오 검증)</h2>
+        <div class="scenario-row">
+          <button onclick="loadScenario(1)">시나리오 1: 만료 직전</button>
+          <button onclick="loadScenario(2)">시나리오 2: 신규 발급</button>
+          <button onclick="loadScenario(3)">시나리오 3: 혼합</button>
+          <button onclick="clearForm()">초기화</button>
+        </div>
+
+        <label>공고 마감일</label>
+        <input type="date" id="deadline" value="2026-06-30">
+
+        <label>사업자 유형 (선택)</label>
+        <div id="manual-business-type" style="display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-top:2px;">
+          <label style="margin:0; display:inline-flex; align-items:center; gap:5px; font-size:13px; color:var(--text); font-weight:normal;">
+            <input type="radio" name="manual-bt" value="" checked> 미선택
+          </label>
+          <label style="margin:0; display:inline-flex; align-items:center; gap:5px; font-size:13px; color:var(--text); font-weight:normal;">
+            <input type="radio" name="manual-bt" value="individual"> 개인
+          </label>
+          <label style="margin:0; display:inline-flex; align-items:center; gap:5px; font-size:13px; color:var(--text); font-weight:normal;">
+            <input type="radio" name="manual-bt" value="corporate"> 법인
+          </label>
+        </div>
+
+        <div class="row-header">
+          <label style="margin:0">요구 서류</label>
+          <button class="add" onclick="addRequired()">+ 추가</button>
+        </div>
+        <div id="required-list"></div>
+
+        <div class="row-header">
+          <label style="margin:0">보유 서류 (선택)</label>
+          <div>
+            <button class="add" onclick="useMyDocs()">내 서류 불러오기</button>
+            <button class="add" onclick="addUserDoc()">+ 추가</button>
+          </div>
+        </div>
+        <div id="user-list"></div>
+
+        <div class="submit-row">
+          <button class="primary" onclick="check()">검증하기</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>결과</h2>
+        <div id="error-area"></div>
+        <div id="summary-area"></div>
+
+        <div class="section-h">보유 서류 검증</div>
+        <div id="checks-area"></div>
+
+        <div class="tasks-header">
+          <div class="section-h" style="margin:0">발급 태스크</div>
+          <button id="ics-tasks-btn" class="add" onclick="downloadTasksIcs()" style="display:none">.ics 로 받기</button>
+        </div>
+        <div id="tasks-area"></div>
+
+        <div class="section-h" id="skipped-h" style="display:none">제외된 서류 (사업자 유형 불일치)</div>
+        <div id="skipped-area"></div>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <script>
+// ─── 공통 상태 ────────────────────────────────────────────────────────────
+const LS_DOCS = "planner_user_docs_v1";
+const LS_BTYPE = "planner_business_type_v1";
+
 let docNames = [];
-let lastTasks = [];   // 가장 최근 검증 결과의 발급 태스크 (ICS 다운로드용)
+let lastTasks = [];
+let announcementsCache = [];
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
 
 async function loadMaster() {
   try {
@@ -226,10 +414,6 @@ async function loadMaster() {
   } catch (e) { docNames = []; }
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-}
-
 function docSelect(value = "") {
   const opts = docNames.map(n =>
     `<option value="${escapeHtml(n)}" ${n === value ? "selected" : ""}>${escapeHtml(n)}</option>`
@@ -237,6 +421,286 @@ function docSelect(value = "") {
   return `<select>${opts}</select>`;
 }
 
+// ─── 탭 전환 ──────────────────────────────────────────────────────────────
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".pane").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(`pane-${btn.dataset.tab}`).classList.add("active");
+    if (btn.dataset.tab === "match" && !announcementsCache.length) loadAnnouncements();
+    if (btn.dataset.tab === "my-docs") renderMyDocs();
+  });
+});
+
+// ─── 내 서류 (localStorage) ───────────────────────────────────────────────
+function getMyDocs() {
+  try { return JSON.parse(localStorage.getItem(LS_DOCS) || "[]"); }
+  catch (e) { return []; }
+}
+function setMyDocs(arr) {
+  localStorage.setItem(LS_DOCS, JSON.stringify(arr));
+  renderMyDocs();
+  // 매칭 탭이 열려 있으면 즉시 다시 매칭
+  if (document.getElementById("pane-match").classList.contains("active")) loadAnnouncements();
+}
+function getBusinessType() {
+  return localStorage.getItem(LS_BTYPE) || "individual";
+}
+function setBusinessType(v) {
+  localStorage.setItem(LS_BTYPE, v);
+  document.querySelectorAll("#business-type-seg button").forEach(b =>
+    b.classList.toggle("active", b.dataset.value === v));
+}
+
+function fillAddNameSelect() {
+  const sel = document.getElementById("add-name");
+  if (!sel) return;
+  sel.innerHTML = docNames.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+}
+
+function addMyDoc() {
+  const name = document.getElementById("add-name").value;
+  const issued = document.getElementById("add-issued").value;
+  if (!name || !issued) return alert("서류명과 발급일을 모두 입력하세요.");
+  const docs = getMyDocs();
+  const idx = docs.findIndex(d => d.name === name);
+  if (idx >= 0) docs[idx].issued_date = issued;
+  else docs.push({ name, issued_date: issued });
+  setMyDocs(docs);
+  document.getElementById("add-issued").value = "";
+}
+
+function removeMyDoc(name) {
+  if (!confirm(`'${name}' 을 보유 목록에서 삭제할까요?`)) return;
+  const docs = getMyDocs().filter(d => d.name !== name);
+  setMyDocs(docs);
+}
+
+function exportDocs() {
+  const data = { documents: getMyDocs(), business_type: getBusinessType(), exported_at: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url;
+  a.download = "my-documents.json"; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importDocs(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (Array.isArray(data.documents)) {
+      setMyDocs(data.documents);
+      if (data.business_type) setBusinessType(data.business_type);
+      alert("복원 완료: " + data.documents.length + "건");
+    } else {
+      alert("JSON 형식이 올바르지 않습니다.");
+    }
+  } catch (e) { alert("복원 실패: " + e.message); }
+  ev.target.value = "";
+}
+
+async function renderMyDocs() {
+  const docs = getMyDocs();
+  document.getElementById("cnt-my-docs").textContent = docs.length;
+  const wrap = document.getElementById("my-docs-list");
+  if (!docs.length) {
+    wrap.innerHTML = `<div class="empty">아직 등록된 서류가 없습니다. 아래 폼에서 추가하세요.</div>`;
+    return;
+  }
+  // 빠르게 현재 상태 표시: 오늘로 검증 (마감일=오늘) → 만료된 것은 즉시 만료 표시
+  const today = new Date().toISOString().slice(0,10);
+  const required = docs.map(d => ({ name: d.name }));
+  try {
+    const res = await fetch("/api/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deadline: today, required_docs: required, user_documents: docs }),
+    });
+    const data = await res.json();
+    const checkMap = {};
+    (data.checks || []).forEach(c => checkMap[c.name] = c);
+    wrap.innerHTML = docs.map(d => {
+      const c = checkMap[d.name];
+      const status = c ? c.status : "no_expiry";
+      const statusLabel = { valid: "유효", expiring_soon: "곧 만료", expired: "만료", no_expiry: "만료없음" }[status] || status;
+      const days = c ? c.days_remaining : null;
+      const daysText = (days == null || status === "no_expiry") ? ""
+        : days < 0 ? `${Math.abs(days)}일 전 만료` : `${days}일 후 만료 (오늘 제출 기준)`;
+      return `
+        <div class="my-doc-card">
+          <div>
+            <div class="name">${escapeHtml(d.name)}</div>
+            <div class="issued">발급일 ${d.issued_date}</div>
+          </div>
+          <div><span class="status-pill ${status}">${statusLabel}</span></div>
+          <div style="color:var(--muted); font-size:12px">${daysText}</div>
+          <button class="del" onclick="removeMyDoc('${escapeHtml(d.name).replace(/'/g,"\\'")}')">×</button>
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    wrap.innerHTML = docs.map(d => `
+      <div class="my-doc-card">
+        <div><div class="name">${escapeHtml(d.name)}</div><div class="issued">발급일 ${d.issued_date}</div></div>
+        <div></div><div></div>
+        <button class="del" onclick="removeMyDoc('${escapeHtml(d.name).replace(/'/g,"\\'")}')">×</button>
+      </div>`).join("");
+  }
+}
+
+document.querySelectorAll("#business-type-seg button").forEach(b => {
+  b.addEventListener("click", () => {
+    setBusinessType(b.dataset.value);
+    if (document.getElementById("pane-match").classList.contains("active")) loadAnnouncements();
+  });
+});
+
+// ─── 공고 매칭 ────────────────────────────────────────────────────────────
+async function loadAnnouncements() {
+  const source = document.getElementById("match-source").value;
+  const url = "/api/announcements?limit=50" + (source ? "&source=" + encodeURIComponent(source) : "");
+  const status = document.getElementById("match-status");
+  status.textContent = "불러오는 중...";
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    announcementsCache = data.announcements || [];
+    status.textContent = `${data.total}건 (마감일 임박순)`;
+    document.getElementById("cnt-match").textContent = data.total;
+    await renderAnnouncements();
+  } catch (e) {
+    status.textContent = "로드 실패: " + e.message;
+  }
+}
+
+async function renderAnnouncements() {
+  const wrap = document.getElementById("announcements-list");
+  if (!announcementsCache.length) {
+    wrap.innerHTML = `<div class="empty">진행 중인 공고가 없습니다.</div>`;
+    return;
+  }
+  const myDocs = getMyDocs();
+  const businessType = getBusinessType();
+  wrap.innerHTML = `<div class="empty">매칭 중...</div>`;
+
+  const results = await Promise.all(announcementsCache.map(async a => {
+    try {
+      const res = await fetch("/api/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          announcement_id: a.id,
+          business_type: businessType,
+          user_documents: myDocs,
+        }),
+      });
+      if (!res.ok) return { announcement: a, error: (await res.json()).error };
+      return { announcement: a, match: await res.json() };
+    } catch (e) {
+      return { announcement: a, error: e.message };
+    }
+  }));
+
+  wrap.innerHTML = results.map(({ announcement: a, match, error }, idx) => {
+    if (error) {
+      return `<div class="announcement-card">
+        <div class="a-title">${escapeHtml(a.title)}</div>
+        <div class="a-meta">매칭 실패: ${escapeHtml(error)}</div>
+      </div>`;
+    }
+    const sum = match.summary;
+    const fulfillLabel = { complete: "전부 충족", partial: "부분 충족", none: "미충족" }[match.fulfillment];
+    return `
+      <div class="announcement-card" id="ann-${idx}">
+        <div class="a-head">
+          <div style="flex:1; min-width:0">
+            <div class="a-title">${escapeHtml(a.title)}</div>
+            <div class="a-meta">
+              ${escapeHtml(a.source_name || a.source_code || "")} ·
+              ${escapeHtml(a.department || "")} ·
+              마감 <b>${escapeHtml((a.end_date || "").slice(0,10))}</b> ${a.d_day ? "(" + escapeHtml(a.d_day) + ")" : ""}
+            </div>
+          </div>
+          <div class="a-actions">
+            <span class="fulfillment-pill ${match.fulfillment}">${fulfillLabel}</span>
+            <button class="add" onclick="toggleMatchDetail(${idx})">상세</button>
+          </div>
+        </div>
+        <div class="a-meta">
+          충족 <b>${sum.fulfilled}</b> · 만료 <b>${sum.expired}</b> · 임박 <b>${sum.expiring}</b> · 미보유 <b>${sum.missing}</b> · 발급 태스크 <b>${match.tasks.length}</b>
+        </div>
+        <div class="match-detail" id="detail-${idx}">
+          ${(match.notes || []).map(n =>
+            `<div class="notes-box"><span class="nt-label">참고:</span>${escapeHtml(n)}</div>`).join("")}
+
+          <div class="section-h">요구 서류 매칭</div>
+          ${match.required_docs.map(d => `
+            <div class="result-card ${d.holding_status}">
+              <div class="title">
+                <span class="badge ${d.holding_status}">${({valid:"충족",expiring_soon:"임박",expired:"만료",missing:"미보유",no_expiry:"충족"})[d.holding_status] || d.holding_status}</span>
+                ${escapeHtml(d.name)} (${d.required_within_days ? d.required_within_days + "일 이내" : "유효기간 없음"})
+              </div>
+              <div>${escapeHtml(d.message)}</div>
+            </div>
+          `).join("")}
+
+          ${match.tasks.length ? `
+            <div class="tasks-header">
+              <div class="section-h" style="margin:0">발급 태스크</div>
+              <button class="add" onclick='downloadAnnTasksIcs(${idx})'>이 일정 .ics 로 받기</button>
+            </div>
+            ${match.tasks.map(t => `
+              <div class="result-card ${t.priority}">
+                <div class="title">
+                  <span class="badge ${t.priority}">${t.priority.toUpperCase()}</span>
+                  ${escapeHtml(t.task)}
+                </div>
+                <div class="meta">발급 권장: ${t.earliest_date} ~ ${t.due_date}</div>
+              </div>
+            `).join("")}
+          ` : ""}
+          <div style="margin-top:10px;">
+            <a class="ics-link" href="${escapeHtml(a.detail_url || "#")}" target="_blank" rel="noopener">원문 공고 보기</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // 상세 데이터를 idx 키로 보관해 ics 다운로드 시 사용
+  window._matchResults = results;
+}
+
+function toggleMatchDetail(idx) {
+  document.getElementById(`ann-${idx}`).classList.toggle("expanded");
+}
+
+async function downloadAnnTasksIcs(idx) {
+  const res = (window._matchResults || [])[idx];
+  if (!res || !res.match) return;
+  await downloadIcs(res.match.tasks, "발급 일정 — " + (res.announcement.title || ""));
+}
+
+async function downloadIcs(tasks, calName) {
+  if (!tasks || !tasks.length) return alert("저장할 태스크가 없습니다.");
+  const res = await fetch("/api/ics/tasks", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ tasks, calendar_name: calName }),
+  });
+  if (!res.ok) return alert("ICS 생성 실패");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "document-tasks.ics";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ─── 수동 검증 ──────────────────────────────────────────────────────────
 function addRequired(name = "", days = 30) {
   const div = document.createElement("div");
   div.className = "doc-row";
@@ -259,6 +723,13 @@ function addUserDoc(name = "", issuedDate = "") {
   document.getElementById("user-list").appendChild(div);
 }
 
+function useMyDocs() {
+  const docs = getMyDocs();
+  if (!docs.length) return alert("'내 서류' 탭에서 먼저 보유 서류를 추가하세요.");
+  document.getElementById("user-list").innerHTML = "";
+  docs.forEach(d => addUserDoc(d.name, d.issued_date));
+}
+
 function clearForm() {
   document.getElementById("required-list").innerHTML = "";
   document.getElementById("user-list").innerHTML = "";
@@ -266,6 +737,10 @@ function clearForm() {
   document.getElementById("summary-area").innerHTML = "";
   document.getElementById("checks-area").innerHTML = "";
   document.getElementById("tasks-area").innerHTML = "";
+  document.getElementById("skipped-area").innerHTML = "";
+  document.getElementById("skipped-h").style.display = "none";
+  const noneRadio = document.querySelector('input[name="manual-bt"][value=""]');
+  if (noneRadio) noneRadio.checked = true;
 }
 
 function loadScenario(n) {
@@ -304,16 +779,20 @@ async function check() {
     const issued = row.querySelector("input[type=date]").value;
     if (issued) user_documents.push({ name, issued_date: issued });
   });
+  const btRadio = document.querySelector('input[name="manual-bt"]:checked');
+  const business_type = btRadio && btRadio.value ? btRadio.value : null;
 
   document.getElementById("error-area").innerHTML = "";
   if (!deadline) return showError("공고 마감일을 입력해주세요.");
   if (required.length === 0) return showError("요구 서류를 1개 이상 추가해주세요.");
 
   try {
+    const payload = { deadline, required_docs: required, user_documents };
+    if (business_type) payload.business_type = business_type;
     const res = await fetch("/api/check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deadline, required_docs: required, user_documents }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "검증 실패" }));
@@ -335,30 +814,14 @@ const STATUS_LABEL = {
 
 async function downloadTasksIcs() {
   if (!lastTasks.length) return;
-  const res = await fetch("/api/ics/tasks", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tasks: lastTasks, calendar_name: "서류 발급 일정" }),
-  });
-  if (!res.ok) {
-    showError("ICS 생성 실패");
-    return;
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "document-tasks.ics";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  await downloadIcs(lastTasks, "서류 발급 일정");
 }
 
 function renderResults(data) {
   lastTasks = data.tasks || [];
   const icsBtn = document.getElementById("ics-tasks-btn");
   if (icsBtn) icsBtn.style.display = lastTasks.length ? "inline-block" : "none";
+
   const expired = data.checks.filter(c => c.status === "expired").length;
   const expiringSoon = data.checks.filter(c => c.status === "expiring_soon").length;
   const total = data.required_docs.length;
@@ -406,11 +869,32 @@ function renderResults(data) {
       </div>
     `).join("");
   }
+
+  // 제외된 서류 (사업자 유형 불일치)
+  const skipped = data.skipped_documents || [];
+  const skippedHeader = document.getElementById("skipped-h");
+  const skippedArea = document.getElementById("skipped-area");
+  if (skipped.length === 0) {
+    skippedHeader.style.display = "none";
+    skippedArea.innerHTML = "";
+  } else {
+    skippedHeader.style.display = "";
+    skippedArea.innerHTML = skipped.map(s => `
+      <div class="notes-box">
+        <b>${escapeHtml(s.name)}</b> — ${escapeHtml(s.reason)}
+      </div>
+    `).join("");
+  }
 }
 
+// ─── 초기화 ──────────────────────────────────────────────────────────────
 (async () => {
   await loadMaster();
-  loadScenario(1);   // 첫 로드시 시나리오 1 자동 표시
+  fillAddNameSelect();
+  setBusinessType(getBusinessType());
+  renderMyDocs();
+  // 수동 검증 탭의 기본 화면도 준비
+  document.querySelectorAll("#required-list, #user-list").forEach(el => el.innerHTML = "");
 })();
 </script>
 </body>

@@ -11,7 +11,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Literal, Optional, TypedDict
 
-from planner.document_master import DOCUMENT_MASTER
+from planner.document_master import (
+    BusinessApplicability,
+    DOCUMENT_MASTER,
+)
 
 # 발급 후 사용 가능 일수 산정 시 안전 마진.
 # (예: 30일짜리 서류를 마감일 직전까지 쓰지 않고 3일 여유를 남겨둔다)
@@ -49,6 +52,47 @@ class RequiredDoc(TypedDict, total=False):
 class UserDocument(TypedDict):
     name: str
     issued_date: date
+
+
+class SkippedDocument(TypedDict):
+    name: str
+    applicable_to: list[BusinessApplicability]
+    reason: str
+
+
+def filter_by_business_type(
+    required_docs: list["RequiredDoc"],
+    user_business_type: Optional[BusinessApplicability],
+) -> tuple[list["RequiredDoc"], list[SkippedDocument]]:
+    """사업자 유형에 해당하지 않는 서류를 거르고 (kept, skipped) 를 반환.
+
+    `user_business_type` 이 None 이면 필터링 없이 전부 그대로 통과시킨다.
+    마스터에 없는 서류는 일단 통과시킨다(사용자 정의 항목 보호).
+    """
+    if user_business_type is None:
+        return list(required_docs), []
+
+    kept: list[RequiredDoc] = []
+    skipped: list[SkippedDocument] = []
+    for r in required_docs:
+        name = r["name"]
+        spec = DOCUMENT_MASTER.get(name)
+        if spec is None:
+            kept.append(r)
+            continue
+        applicable = list(spec.get("applicable_to") or [])
+        if user_business_type in applicable or "all" in applicable:
+            kept.append(r)
+        else:
+            skipped.append({
+                "name": name,
+                "applicable_to": applicable,
+                "reason": (
+                    f"{user_business_type} 사업자에 해당하지 않는 서류입니다 "
+                    f"(applicable_to={applicable})."
+                ),
+            })
+    return kept, skipped
 
 
 def check_document_validity(
@@ -133,14 +177,20 @@ def build_preparation_schedule(
     announcement_deadline: date,
     required_docs: list[RequiredDoc],
     user_documents: Optional[list[UserDocument]] = None,
+    user_business_type: Optional[BusinessApplicability] = None,
 ) -> list[PreparationTask]:
     """공고 마감일에 맞춰 필요한 서류 발급 일정을 생성한다.
 
+    - `user_business_type` 이 주어지면 마스터의 `applicable_to` 에 맞지 않는 서류는
+      태스크 생성에서 제외한다. None 이면 기존처럼 모두 포함.
     - 보유분이 마감일 기준 유효(`valid`/`no_expiry`)하면 태스크를 만들지 않는다.
     - 만료/임박이면 "재발급" 태스크를 만든다.
     - 보유분이 없으면 "신규 발급" 태스크를 만든다.
     - 모든 발급 태스크의 due_date는 마감 7일 전이다 (안전 여유).
     """
+    if user_business_type is not None:
+        required_docs, _ = filter_by_business_type(required_docs, user_business_type)
+
     user_documents = user_documents or []
     user_map = {d["name"]: d for d in user_documents}
 

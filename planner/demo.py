@@ -13,9 +13,11 @@ from datetime import date
 from planner.checker import (
     PreparationTask,
     RequiredDoc,
+    SkippedDocument,
     UserDocument,
     build_preparation_schedule,
     check_document_validity,
+    filter_by_business_type,
 )
 
 
@@ -67,6 +69,14 @@ def _print_check(
         )
         label = status_label.get(result["status"], result["status"])
         print(f"      [{label}] {result['message']}")
+
+
+def _print_skipped(skipped: list[SkippedDocument]) -> None:
+    if not skipped:
+        return
+    print(f"  · 제외된 서류 ({len(skipped)}건, 사업자 유형 불일치):")
+    for s in skipped:
+        print(f"      [SKIP] {s['name']} — {s['reason']}")
 
 
 def _print_tasks(tasks: list[PreparationTask]) -> None:
@@ -135,10 +145,37 @@ def scenario_3() -> None:
     _print_tasks(tasks)
 
 
+def scenario_4() -> None:
+    deadline = date(2026, 9, 30)
+    required: list[RequiredDoc] = [
+        {"name": "사업자등록증명", "required_within_days": 90},
+        {"name": "납세증명서", "required_within_days": 30},
+        {"name": "법인등기부등본", "required_within_days": 90},
+        {"name": "4대보험 완납증명서", "required_within_days": 30},
+    ]
+    user_docs: list[UserDocument] = []
+    business_type = "individual"
+
+    _print_header(4, "개인사업자가 법인 전용 서류 요구를 받음", deadline)
+    print(f"  사업체 유형: {business_type}")
+    _print_required(required)
+
+    # 사업자 유형 필터링 결과를 별도로 보여준 뒤 동일 결과를 schedule 에 반영
+    _, skipped = filter_by_business_type(required, business_type)
+    _print_skipped(skipped)
+
+    _print_check(deadline, user_docs, required)
+    tasks = build_preparation_schedule(
+        deadline, required, user_docs, user_business_type=business_type
+    )
+    _print_tasks(tasks)
+
+
 def main() -> None:
     scenario_1()
     scenario_2()
     scenario_3()
+    scenario_4()
     print()
 
 
