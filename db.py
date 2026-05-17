@@ -131,6 +131,41 @@ CREATE TABLE IF NOT EXISTS crawl_runs (
     status          TEXT,
     error           TEXT
 );
+
+CREATE TABLE IF NOT EXISTS attachment_folders (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS announcement_schedule_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    folder_id   INTEGER NOT NULL REFERENCES attachment_folders(id),
+    file_hash   TEXT,
+    title       TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    date_start  TEXT NOT NULL,
+    date_end    TEXT,
+    time        TEXT,
+    note        TEXT,
+    source_page INTEGER,
+    added_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_events_folder ON announcement_schedule_events(folder_id);
+
+CREATE TABLE IF NOT EXISTS uploaded_attachments (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_hash         TEXT UNIQUE NOT NULL,
+    original_filename TEXT NOT NULL,
+    announcement_id   TEXT,
+    uploaded_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    analyzed_at       TEXT,
+    status            TEXT NOT NULL DEFAULT 'pending'
+);
+
+CREATE INDEX IF NOT EXISTS idx_uploaded_attachments_hash ON uploaded_attachments(file_hash);
+CREATE INDEX IF NOT EXISTS idx_uploaded_attachments_announcement ON uploaded_attachments(announcement_id);
 """
 
 
@@ -152,6 +187,7 @@ def connect(db_path: Path = DB_PATH):
 _MIGRATIONS: list[tuple[str, str, str]] = [
     # (table, column, ddl-fragment)
     ("announcements", "business_id", "INTEGER REFERENCES assistance_businesses(id)"),
+    ("uploaded_attachments", "folder_id", "INTEGER REFERENCES attachment_folders(id)"),
 ]
 
 
@@ -167,7 +203,22 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
 # Indexes that depend on migrated columns; created after _apply_migrations.
 _POST_MIGRATION_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_announcements_business ON announcements(business_id)",
+    "CREATE INDEX IF NOT EXISTS idx_uploaded_attachments_folder ON uploaded_attachments(folder_id)",
 ]
+
+
+def _ensure_default_folder(conn: sqlite3.Connection) -> None:
+    """폴더가 하나도 없으면 '기본' 폴더 생성. 폴더가 없는 기존 첨부는 거기로 편입."""
+    row = conn.execute("SELECT id FROM attachment_folders ORDER BY id LIMIT 1").fetchone()
+    if row is None:
+        cur = conn.execute("INSERT INTO attachment_folders(name) VALUES (?)", ("기본",))
+        default_id = cur.lastrowid
+    else:
+        default_id = row["id"]
+    conn.execute(
+        "UPDATE uploaded_attachments SET folder_id=? WHERE folder_id IS NULL",
+        (default_id,),
+    )
 
 
 def init_db(db_path: Path = DB_PATH) -> None:
@@ -177,6 +228,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
         _apply_migrations(conn)
         for ddl in _POST_MIGRATION_INDEXES:
             conn.execute(ddl)
+        _ensure_default_folder(conn)
 
 
 def upsert_source(conn: sqlite3.Connection, code: str, name: str, base_url: str) -> int:

@@ -32,6 +32,7 @@ class CalendarEvent(TypedDict, total=False):
     description: str
     url: str
     date: date
+    date_end: date  # 기간 이벤트의 마지막 날 (inclusive). 없으면 1일짜리.
     alarms_days_before: list[int]
 
 
@@ -110,7 +111,9 @@ def build_calendar(
         uid = ev.get("uid") or _hash_uid(title, d.isoformat())
         alarms = ev.get("alarms_days_before") or DEFAULT_ALARMS_DAYS
 
-        dtend = date.fromordinal(d.toordinal() + 1)  # 종일 이벤트의 exclusive end
+        # 종일 이벤트의 exclusive end. 기간 이벤트면 date_end+1, 아니면 d+1.
+        end_inclusive = ev.get("date_end") or d
+        dtend = date.fromordinal(end_inclusive.toordinal() + 1)
         lines.extend([
             "BEGIN:VEVENT",
             f"UID:{uid}",

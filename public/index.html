@@ -314,6 +314,286 @@
     min-height: 14px;
   }
 
+  /* 공고 분석 탭 */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 26px; text-align: center; background: #fafbfc;
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .upload-zone.dragover, .upload-zone:hover {
+    border-color: var(--primary); background: #eef4ff;
+  }
+  .upload-zone .uz-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .upload-zone .uz-sub { font-size: 12px; color: var(--muted); }
+  .upload-zone input[type="file"] { display: none; }
+  .attachment-card {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .attachment-card .ac-head {
+    display: flex; justify-content: space-between; gap: 12px;
+    align-items: flex-start; margin-bottom: 8px;
+  }
+  .attachment-card .ac-title { font-weight: 600; font-size: 14px; }
+  .attachment-card .ac-meta {
+    color: var(--muted); font-size: 11.5px; margin-top: 2px;
+  }
+  .ac-detail { display: none; margin-top: 12px;
+    padding-top: 12px; border-top: 1px dashed var(--border); }
+  .attachment-card.expanded .ac-detail { display: block; }
+  .page-pill {
+    display: inline-block; font-size: 10.5px; font-weight: 700;
+    background: #e0e7ff; color: #3730a3;
+    padding: 1px 7px; border-radius: 9px; margin-right: 6px;
+    vertical-align: 1px;
+  }
+  .extract-item {
+    border-left: 3px solid var(--border);
+    padding: 8px 12px; margin-bottom: 6px;
+    font-size: 13px; background: #fafafa; border-radius: 6px;
+  }
+  .extract-item.high { border-left-color: var(--urgent); }
+  .extract-item.medium { border-left-color: var(--high); }
+  .extract-item.low { border-left-color: var(--no-expiry); }
+  .extract-item .e-cat {
+    font-size: 10.5px; font-weight: 700;
+    background: #f3f4f6; padding: 1px 7px; border-radius: 9px;
+    color: var(--muted); margin-left: 6px; vertical-align: 1px;
+  }
+  .processing {
+    background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 7px; padding: 10px 12px;
+    font-size: 13px; color: #854d0e;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .processing::before {
+    content: ""; width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #fde68a; border-top-color: var(--high);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 폴더 스위쳐 */
+  .folder-bar {
+    margin-top: 16px; padding: 12px 14px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  }
+  .folder-bar-row {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .folder-chips {
+    display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0;
+  }
+  .folder-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 14px;
+    border: 1px solid var(--border); background: #f9fafb;
+    font-size: 12.5px; cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .folder-chip:hover { background: #f1f5f9; border-color: #cbd5e1; }
+  .folder-chip.active {
+    background: var(--primary); color: #fff; border-color: var(--primary);
+    font-weight: 600;
+  }
+  .folder-chip .fc-count {
+    font-size: 10.5px; padding: 1px 6px; border-radius: 8px;
+    background: rgba(0,0,0,0.08);
+  }
+  .folder-chip.active .fc-count { background: rgba(255,255,255,0.25); }
+  .folder-chip .fc-x {
+    margin-left: 2px; font-size: 11px; opacity: 0.7;
+    border: none; background: transparent; cursor: pointer;
+    color: inherit; padding: 0 2px;
+  }
+  .folder-chip .fc-x:hover { opacity: 1; }
+  .folder-add-btn {
+    padding: 6px 12px; border-radius: 14px;
+    border: 1px dashed #94a3b8; background: #fff; cursor: pointer;
+    font-size: 12.5px; color: #475569;
+  }
+  .folder-add-btn:hover { background: #f8fafc; border-color: var(--primary); color: var(--primary); }
+  .folder-bar-hint {
+    font-size: 11.5px; color: var(--muted); margin-top: 8px;
+  }
+
+  /* 캘린더 탭 */
+  .cal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px;
+  }
+  .cal-nav { display: flex; align-items: center; gap: 4px; }
+  .cal-nav button {
+    padding: 5px 10px; border: 1px solid var(--border); background: #fff;
+    border-radius: 7px; cursor: pointer; font-size: 12.5px;
+  }
+  .cal-nav button:hover { background: #f8fafc; }
+  .cal-toolbar {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px;
+    background: #fafbfc;
+  }
+  .cal-legend { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cal-legend .leg-item {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; padding: 3px 8px; border-radius: 8px;
+    background: #fff; border: 1px solid var(--border);
+  }
+  .cal-legend .leg-swatch {
+    width: 11px; height: 11px; border-radius: 3px;
+  }
+  .cal-export { display: flex; gap: 6px; align-items: center; }
+
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+    background: var(--border); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  .cal-dow {
+    background: #f8fafc; padding: 6px 8px; text-align: center;
+    font-size: 11.5px; font-weight: 700; color: #475569;
+  }
+  .cal-dow.sun { color: #ef4444; }
+  .cal-dow.sat { color: #3b82f6; }
+  .cal-cell {
+    background: #fff; min-height: 92px; padding: 5px 6px;
+    display: flex; flex-direction: column;
+  }
+  .cal-cell.dim { background: #f9fafb; }
+  .cal-cell.today .cal-daynum { color: #fff; background: #ef4444; }
+  .cal-daynum {
+    font-size: 11.5px; font-weight: 600; color: #334155;
+    align-self: flex-start; padding: 1px 7px; border-radius: 10px;
+    margin-bottom: 4px;
+  }
+  .cal-cell.sun .cal-daynum:not(.today .cal-daynum) { color: #ef4444; }
+  .cal-cell.sat .cal-daynum:not(.today .cal-daynum) { color: #3b82f6; }
+
+  .cal-chip {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; padding: 2px 5px; border-radius: 4px;
+    margin-bottom: 2px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cal-chip input[type=checkbox] {
+    margin: 0; width: 11px; height: 11px; flex-shrink: 0;
+  }
+  .cal-chip .chip-text {
+    overflow: hidden; text-overflow: ellipsis; flex: 1;
+    font-weight: 600;
+  }
+  .cal-chip:hover { filter: brightness(0.95); }
+  .cal-chip.selected { box-shadow: inset 0 0 0 2px rgba(59,130,246,0.8); }
+
+  /* 일정 카드 */
+  .schedule-card {
+    border: 1px solid #fbbf24; border-radius: 12px;
+    background: #fffbeb;
+    padding: 16px 18px; margin-top: 14px;
+  }
+  .schedule-card .sc-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 10px;
+  }
+  .schedule-card .sc-title { font-weight: 700; font-size: 15px; color: #78350f; }
+  .schedule-card .sc-actions { display: flex; gap: 6px; }
+  .schedule-card .ics-btn {
+    padding: 5px 11px; border-radius: 8px; border: 1px solid #f59e0b;
+    background: #fff; color: #b45309; font-size: 12px; cursor: pointer; font-weight: 600;
+  }
+  .schedule-card .ics-btn:hover { background: #fef3c7; }
+  .schedule-item {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 8px 0; border-top: 1px dashed #fcd34d;
+  }
+  .schedule-item:first-of-type { border-top: none; }
+  .schedule-item .si-date {
+    font-size: 12px; font-weight: 700; color: #92400e;
+    min-width: 145px; flex-shrink: 0;
+  }
+  .schedule-item .si-body { flex: 1; min-width: 0; }
+  .schedule-item .si-title { font-size: 13px; font-weight: 600; }
+  .schedule-item .si-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .schedule-item .si-x {
+    border: none; background: transparent; cursor: pointer;
+    color: #94a3b8; font-size: 14px; padding: 0 2px;
+  }
+  .schedule-item .si-x:hover { color: #ef4444; }
+  .sched-type {
+    display: inline-block; font-size: 10.5px; font-weight: 700;
+    padding: 1px 7px; border-radius: 9px;
+    background: #fde68a; color: #78350f; margin-right: 6px;
+  }
+
+  /* 일정 확인 모달 (업로드 직후) */
+  .sched-confirm {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.45);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .sched-confirm-box {
+    background: #fff; border-radius: 12px; padding: 20px 22px;
+    max-width: 640px; width: 92vw; max-height: 86vh; overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  }
+  .sched-confirm-box h3 { margin: 0 0 6px; font-size: 16px; }
+  .sched-confirm-box .sub {
+    color: var(--muted); font-size: 12.5px; margin-bottom: 14px;
+  }
+  .sched-confirm-row {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 6px; cursor: pointer;
+  }
+  .sched-confirm-row:hover { border-color: var(--primary); background: #f8fafc; }
+  .sched-confirm-row input[type=checkbox] { margin-top: 3px; }
+  .sched-confirm-btns {
+    display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;
+  }
+  .sched-confirm-btns button {
+    padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    border: 1px solid var(--border); background: #fff;
+  }
+  .sched-confirm-btns .primary {
+    background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600;
+  }
+  .sched-confirm-btns .primary:disabled {
+    background: #cbd5e1; border-color: #cbd5e1; cursor: not-allowed;
+  }
+
+  /* 통합 요약 카드 */
+  .merged-card {
+    border: 1px solid #c7d2fe; border-radius: 12px;
+    background: #f5f7ff;
+    padding: 16px 18px; margin-top: 18px;
+  }
+  .merged-card .mc-title {
+    font-weight: 700; font-size: 15px; margin-bottom: 4px;
+  }
+  .merged-card .mc-meta {
+    color: var(--muted); font-size: 12px; margin-bottom: 12px;
+  }
+  .merged-card .mc-sub-h {
+    font-weight: 600; font-size: 13px; color: #334155;
+    margin: 14px 0 6px; padding-bottom: 4px;
+    border-bottom: 1px dashed #cbd5e1;
+  }
+  .merged-card .mc-group {
+    margin-bottom: 12px;
+  }
+  .merged-card .mc-group-label {
+    font-size: 11.5px; font-weight: 700; color: var(--muted);
+    margin-bottom: 5px; letter-spacing: 0.2px;
+  }
+  .merged-card .extract-item { background: #fff; }
+  .src-pill {
+    display: inline-block; font-size: 10.5px;
+    background: #fef3c7; color: #92400e;
+    padding: 1px 7px; border-radius: 9px; margin-right: 4px;
+    vertical-align: 1px; font-weight: 600;
+  }
+
   /* 공고 매칭 패널 */
   .announcement-card {
     border: 1px solid var(--border); border-radius: 10px;
@@ -369,6 +649,8 @@
   <div class="tab-list">
     <button class="tab-btn active" data-tab="my-docs">내 서류<span class="count" id="cnt-my-docs">0</span></button>
     <button class="tab-btn" data-tab="match">공고 매칭<span class="count" id="cnt-match">·</span></button>
+    <button class="tab-btn" data-tab="analyze">공고 분석<span class="count" id="cnt-attach">0</span></button>
+    <button class="tab-btn" data-tab="calendar">캘린더<span class="count" id="cnt-cal">0</span></button>
     <button class="tab-btn" data-tab="manual">수동 검증</button>
   </div>
 </nav>
@@ -451,7 +733,74 @@
     </div>
   </section>
 
-  <!-- 탭 3: 수동 검증 (기존 시나리오) -->
+  <!-- 탭 3: 공고 분석 (PDF 업로드 + LLM 추출) -->
+  <section class="pane" id="pane-analyze">
+    <div class="panel">
+      <h2>공고 PDF 분석 (베타)</h2>
+      <p style="margin-top:0; color:var(--muted); font-size:12px;">
+        공고문 PDF를 업로드하면 <b>신청 자격 조건</b>과 <b>유의사항</b>을 자동으로 추출합니다.
+        업로드한 PDF는 본인의 로컬 서버(<code>planner/storage/</code>)에만 저장되며, 분석 결과는 같은 파일을 다시 올리면 캐시에서 즉시 응답합니다.
+        Vercel 배포본에서는 파일시스템 쓰기가 막혀 동작하지 않으니 본인 PC에서 <code>python -m planner.web</code> 으로 띄워 사용하세요.
+      </p>
+
+      <label class="upload-zone" id="upload-zone">
+        <div class="uz-title">PDF 파일을 클릭하거나 드래그해서 업로드</div>
+        <div class="uz-sub">최대 50MB · 첫 분석은 LLM 호출이 5~20초 걸릴 수 있습니다.</div>
+        <input type="file" id="upload-input" accept="application/pdf">
+      </label>
+      <div id="upload-status" style="margin-top:10px;"></div>
+
+      <div class="folder-bar" id="folder-bar">
+        <div class="folder-bar-row">
+          <div class="folder-chips" id="folder-chips"></div>
+          <button class="folder-add-btn" onclick="createFolder()">+ 새 공고 폴더</button>
+        </div>
+        <div class="folder-bar-hint" id="folder-bar-hint">
+          업로드한 파일은 현재 선택된 폴더에 들어갑니다. 다른 공고를 분석하려면 새 폴더를 만들고 전환하세요.
+        </div>
+      </div>
+
+      <div id="folder-schedule"></div>
+      <div id="merged-summary"></div>
+
+      <div class="section-h" style="margin-top:22px">업로드된 첨부파일</div>
+      <div id="attachments-list"></div>
+    </div>
+  </section>
+
+  <!-- 탭 4: 캘린더 (모든 폴더의 일정 통합) -->
+  <section class="pane" id="pane-calendar">
+    <div class="panel">
+      <div class="cal-header">
+        <h2 style="margin:0">📅 일정 캘린더</h2>
+        <div class="cal-nav">
+          <button onclick="calPrev()">◀</button>
+          <button onclick="calToday()">오늘</button>
+          <span id="cal-month-label" style="font-weight:700; font-size:15px; margin: 0 8px;">—</span>
+          <button onclick="calNext()">▶</button>
+        </div>
+      </div>
+
+      <div class="cal-toolbar">
+        <div id="cal-legend" class="cal-legend"></div>
+        <div class="cal-export">
+          <span id="cal-sel-count" class="ac-meta" style="margin-right:8px;">선택 0개</span>
+          <button class="add" onclick="selectAllVisible()">월간 전체 선택</button>
+          <button class="add" onclick="clearSelection()">선택 해제</button>
+          <button class="add" style="background:#dbeafe;border-color:#93c5fd;color:#1d4ed8;font-weight:600"
+            onclick="downloadSelectedIcs()">📥 선택 ICS 다운로드</button>
+        </div>
+      </div>
+
+      <div id="cal-grid" class="cal-grid"></div>
+
+      <div id="cal-empty" class="empty" style="margin-top:14px; display:none">
+        아직 추가된 일정이 없습니다. <b>공고 분석</b> 탭에서 PDF 를 업로드하고 일정을 추가하면 여기에 표시됩니다.
+      </div>
+    </div>
+  </section>
+
+  <!-- 탭 5: 수동 검증 (기존 시나리오) -->
   <section class="pane" id="pane-manual">
     <div class="grid-2">
       <div class="panel">
@@ -566,6 +915,12 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.getElementById(`pane-${btn.dataset.tab}`).classList.add("active");
     if (btn.dataset.tab === "match" && !announcementsCache.length) loadAnnouncements();
     if (btn.dataset.tab === "my-docs") renderMyDocs();
+    if (btn.dataset.tab === "analyze") {
+      loadFolders().then(loadAttachments);
+    }
+    if (btn.dataset.tab === "calendar") {
+      loadCalendar();
+    }
   });
 });
 
@@ -1226,13 +1581,879 @@ function renderResults(data) {
   }
 }
 
+// ─── 공고 분석 (PDF 업로드 + LLM) ────────────────────────────────────────
+const SEVERITY_LABEL = { high: "주의", medium: "보통", low: "참고" };
+const CATEGORY_LABEL_ELIG = {
+  age: "연령", business_stage: "사업단계", location: "지역",
+  industry: "업종", revenue: "매출", employees: "고용", other: "기타",
+};
+const SCHEDULE_TYPE_LABEL = {
+  recruitment_period: "신청·접수",
+  announcement_date: "발표",
+  evaluation_date: "심사·평가",
+  business_period: "사업 수행",
+  contract_date: "협약 체결",
+  other: "일정",
+};
+
+function fmtDateRange(ds, de, time) {
+  let s = ds || "";
+  if (de && de !== ds) s += ` ~ ${de}`;
+  if (time) s += ` ${time}`;
+  return s;
+}
+
+// 폴더 상태 (전역) — 선택된 폴더 기준으로 업로드/리스트/요약 모두 스코프됨
+let CURRENT_FOLDER_ID = null;
+let CURRENT_FOLDERS = [];
+const FOLDER_LS_KEY = "analyzer_folder_id";
+
+async function loadFolders() {
+  try {
+    const res = await fetch("/api/folders");
+    if (!res.ok) throw new Error("폴더 목록 조회 실패");
+    const data = await res.json();
+    CURRENT_FOLDERS = data.folders || [];
+  } catch (e) {
+    CURRENT_FOLDERS = [];
+  }
+  // 선택 폴더 복원: localStorage → 첫 폴더
+  if (!CURRENT_FOLDERS.length) {
+    CURRENT_FOLDER_ID = null;
+  } else {
+    const saved = parseInt(localStorage.getItem(FOLDER_LS_KEY) || "", 10);
+    const hit = CURRENT_FOLDERS.find(f => f.id === saved);
+    CURRENT_FOLDER_ID = hit ? hit.id : CURRENT_FOLDERS[0].id;
+  }
+  renderFolderBar();
+}
+
+function renderFolderBar() {
+  const chips = document.getElementById("folder-chips");
+  if (!chips) return;
+  if (!CURRENT_FOLDERS.length) {
+    chips.innerHTML = `<span class="ac-meta">폴더 없음</span>`;
+    return;
+  }
+  chips.innerHTML = CURRENT_FOLDERS.map(f => {
+    const active = f.id === CURRENT_FOLDER_ID ? "active" : "";
+    const safeName = escapeHtml(f.name).replace(/'/g, "&#39;");
+    return `
+      <span class="folder-chip ${active}" onclick="selectFolder(${f.id})" ondblclick="renameFolder(${f.id}, '${safeName}')">
+        ${escapeHtml(f.name)}
+        <span class="fc-count">${f.count}</span>
+        <button class="fc-x" title="이름 수정"
+          onclick="event.stopPropagation(); renameFolder(${f.id}, '${safeName}')">✎</button>
+        <button class="fc-x" title="폴더 삭제"
+          onclick="event.stopPropagation(); deleteFolder(${f.id}, '${safeName}')">×</button>
+      </span>
+    `;
+  }).join("");
+}
+
+function selectFolder(folderId) {
+  if (folderId === CURRENT_FOLDER_ID) return;
+  CURRENT_FOLDER_ID = folderId;
+  localStorage.setItem(FOLDER_LS_KEY, String(folderId));
+  renderFolderBar();
+  loadAttachments();
+}
+
+async function createFolder() {
+  const name = prompt("새 공고 폴더 이름 (예: 'K-스타트업 2026 AI리그')");
+  if (!name || !name.trim()) return;
+  try {
+    const res = await fetch("/api/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "폴더 생성 실패" }));
+      alert(err.error || "폴더 생성 실패");
+      return;
+    }
+    const data = await res.json();
+    await loadFolders();
+    if (data.folder && data.folder.id) {
+      selectFolder(data.folder.id);
+    } else {
+      renderFolderBar();
+      loadAttachments();
+    }
+  } catch (e) {
+    alert("폴더 생성 실패: " + e.message);
+  }
+}
+
+async function renameFolder(folderId, currentName) {
+  const name = prompt("새 폴더 이름", currentName);
+  if (name === null) return;  // 취소
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === currentName) return;
+  try {
+    const res = await fetch(`/api/folders/${folderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "이름 수정 실패" }));
+      alert(err.error || "이름 수정 실패");
+      return;
+    }
+    await loadFolders();
+  } catch (e) {
+    alert("이름 수정 실패: " + e.message);
+  }
+}
+
+async function deleteFolder(folderId, name) {
+  const folder = CURRENT_FOLDERS.find(f => f.id === folderId);
+  const count = folder ? folder.count : 0;
+  const msg = count > 0
+    ? `'${name}' 폴더와 그 안의 파일 ${count}개를 모두 삭제할까요?`
+    : `'${name}' 폴더를 삭제할까요?`;
+  if (!confirm(msg)) return;
+  try {
+    const res = await fetch(`/api/folders/${folderId}`, { method: "DELETE" });
+    if (!res.ok) {
+      alert("삭제 실패");
+      return;
+    }
+    if (CURRENT_FOLDER_ID === folderId) {
+      CURRENT_FOLDER_ID = null;
+      localStorage.removeItem(FOLDER_LS_KEY);
+    }
+    await loadFolders();
+    await loadAttachments();
+  } catch (e) {
+    alert("삭제 실패: " + e.message);
+  }
+}
+
+function setupUploadZone() {
+  const zone = document.getElementById("upload-zone");
+  const input = document.getElementById("upload-input");
+  if (!zone || !input) return;
+  input.addEventListener("change", () => {
+    if (input.files[0]) uploadPdf(input.files[0]);
+  });
+  ["dragenter","dragover"].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.add("dragover");
+  }));
+  ["dragleave","drop"].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.remove("dragover");
+  }));
+  zone.addEventListener("drop", e => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) uploadPdf(f);
+  });
+}
+
+async function uploadPdf(file) {
+  const status = document.getElementById("upload-status");
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    status.innerHTML = `<div class="error">PDF 파일만 업로드 가능합니다.</div>`;
+    return;
+  }
+  if (!CURRENT_FOLDER_ID) {
+    status.innerHTML = `<div class="error">먼저 공고 폴더를 만들거나 선택해주세요.</div>`;
+    return;
+  }
+  status.innerHTML = `<div class="processing">${escapeHtml(file.name)} 분석 중... (LLM 호출, 5~20초 소요)</div>`;
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("folder_id", String(CURRENT_FOLDER_ID));
+  try {
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "업로드 실패" }));
+      status.innerHTML = `<div class="error">${escapeHtml(err.error || "업로드 실패")}</div>`;
+      return;
+    }
+    const data = await res.json();
+    const cached = data.analysis && data.analysis.cache_hit;
+    status.innerHTML = `<div class="summary"><b>${escapeHtml(file.name)}</b> 분석 완료${cached ? " (캐시 히트)" : ""}.</div>`;
+    document.getElementById("upload-input").value = "";
+    await loadFolders();   // 카운트 갱신
+    await loadAttachments();
+    // 방금 업로드한 카드를 펼친 상태로
+    setTimeout(() => {
+      const el = document.getElementById(`att-${data.file_hash}`);
+      if (el) el.classList.add("expanded");
+    }, 50);
+  } catch (e) {
+    status.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// 기존 파일을 캐시 무시하고 다시 분석 → schedule 있으면 confirm 모달
+async function reanalyzeFile(fileHash, fileName) {
+  const status = document.getElementById("upload-status");
+  status.innerHTML = `<div class="processing">${escapeHtml(fileName)} 일정 재추출 중... (LLM 호출, 5~20초)</div>`;
+  try {
+    const res = await fetch(`/api/attachments/${encodeURIComponent(fileHash)}/reanalyze`, { method: "POST" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "재분석 실패" }));
+      status.innerHTML = `<div class="error">${escapeHtml(err.error || "재분석 실패")}</div>`;
+      return;
+    }
+    const data = await res.json();
+    const items = (data.analysis && data.analysis.schedule && data.analysis.schedule.items) || [];
+    if (items.length) {
+      status.innerHTML = `<div class="summary">${escapeHtml(fileName)} 에서 일정 ${items.length}건 발견.</div>`;
+      showScheduleConfirm(items, fileHash, fileName);
+    } else {
+      status.innerHTML = `<div class="summary">${escapeHtml(fileName)} — 추출된 일정 없음.</div>`;
+    }
+    await loadAttachments();
+  } catch (e) {
+    status.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ─── 폴더 일정 (저장된 것) ─────────────────────────────────────────────
+async function loadFolderSchedule() {
+  const wrap = document.getElementById("folder-schedule");
+  if (!wrap) return;
+  if (!CURRENT_FOLDER_ID) { wrap.innerHTML = ""; return; }
+  let events = [];
+  try {
+    const res = await fetch(`/api/folders/${CURRENT_FOLDER_ID}/schedule`);
+    if (res.ok) {
+      const data = await res.json();
+      events = data.events || [];
+    }
+  } catch (e) { /* keep empty */ }
+
+  const extractBtn = `
+    <button class="ics-btn" style="background:#fef3c7;border-color:#f59e0b;color:#b45309"
+      onclick="extractFolderSchedule()" title="이 폴더의 모든 PDF 를 한 번에 LLM 에 보내 중복 제거된 일정을 추출">
+      📅 ${events.length ? '일정 재추출' : '이 공고 일정 추출'}
+    </button>`;
+
+  if (!events.length) {
+    wrap.innerHTML = `
+      <div class="schedule-card">
+        <div class="sc-head">
+          <div class="sc-title">📅 이 공고의 일정</div>
+          <div class="sc-actions">${extractBtn}</div>
+        </div>
+        <div class="ac-meta" style="padding:6px 0;">아직 추출된 일정이 없습니다. 위 버튼으로 한 번에 추출하세요.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const rows = events.map(ev => `
+    <div class="schedule-item">
+      <div class="si-date">${escapeHtml(fmtDateRange(ev.date_start, ev.date_end, ev.time))}</div>
+      <div class="si-body">
+        <div class="si-title">
+          <span class="sched-type">${escapeHtml(SCHEDULE_TYPE_LABEL[ev.type] || ev.type)}</span>
+          ${escapeHtml(ev.title)}
+        </div>
+        ${ev.note ? `<div class="si-meta">${escapeHtml(ev.note)}</div>` : ""}
+        ${ev.source_page ? `<div class="si-meta">출처 p.${ev.source_page}</div>` : ""}
+      </div>
+      <button class="si-x" title="삭제" onclick="deleteScheduleEvent(${ev.id})">×</button>
+    </div>
+  `).join("");
+  wrap.innerHTML = `
+    <div class="schedule-card">
+      <div class="sc-head">
+        <div class="sc-title">📅 이 공고의 일정 (${events.length}건)</div>
+        <div class="sc-actions">
+          ${extractBtn}
+          <button class="ics-btn" onclick="downloadFolderIcs()">ICS 다운로드</button>
+        </div>
+      </div>
+      ${rows}
+    </div>
+  `;
+}
+
+// 폴더 단위로 모든 PDF 텍스트를 LLM 에 합쳐서 보내고 일정 추출(중복 제거).
+async function extractFolderSchedule() {
+  if (!CURRENT_FOLDER_ID) return;
+  const status = document.getElementById("upload-status");
+  status.innerHTML = `<div class="processing">이 공고의 모든 문서에서 일정 추출 중... (LLM 호출, 10~30초)</div>`;
+  try {
+    const res = await fetch(`/api/folders/${CURRENT_FOLDER_ID}/extract-schedule`, { method: "POST" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "추출 실패" }));
+      status.innerHTML = `<div class="error">${escapeHtml(err.error || "추출 실패")}</div>`;
+      return;
+    }
+    const data = await res.json();
+    const items = data.items || [];
+    if (!items.length) {
+      status.innerHTML = `<div class="summary">추출된 일정이 없습니다. (분석 ${data.file_count}개 파일)</div>`;
+      return;
+    }
+    status.innerHTML = `<div class="summary">${data.file_count}개 파일에서 일정 ${items.length}건 추출 완료 (중복 제거됨).</div>`;
+    showScheduleConfirm(items, null, `이 공고 (${data.file_count}개 문서)`, /*offerReplace=*/true);
+  } catch (e) {
+    status.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function downloadFolderIcs() {
+  if (!CURRENT_FOLDER_ID) return;
+  window.location.href = `/api/folders/${CURRENT_FOLDER_ID}/schedule.ics`;
+}
+
+async function deleteScheduleEvent(eventId) {
+  if (!confirm("이 일정을 삭제할까요?")) return;
+  try {
+    const res = await fetch(`/api/schedule/${eventId}`, { method: "DELETE" });
+    if (!res.ok) { alert("삭제 실패"); return; }
+    await loadFolderSchedule();
+  } catch (e) {
+    alert("삭제 실패: " + e.message);
+  }
+}
+
+// ─── 업로드 직후 일정 확인 모달 ─────────────────────────────────────────
+function showScheduleConfirm(items, fileHash, fileName, offerReplace) {
+  const overlay = document.createElement("div");
+  overlay.className = "sched-confirm";
+  const safeName = escapeHtml(fileName);
+  const replaceChecked = offerReplace ? "checked" : "";
+  overlay.innerHTML = `
+    <div class="sched-confirm-box">
+      <h3>📅 ${items.length}개의 일정을 발견했어요</h3>
+      <div class="sub">출처: ${safeName} · 추가할 일정을 선택하세요.</div>
+      ${items.map((it, idx) => `
+        <label class="sched-confirm-row">
+          <input type="checkbox" data-idx="${idx}" checked>
+          <div style="flex:1; min-width:0">
+            <div style="font-size:13px;">
+              <span class="sched-type">${escapeHtml(SCHEDULE_TYPE_LABEL[it.type] || it.type)}</span>
+              <b>${escapeHtml(it.title)}</b>
+            </div>
+            <div style="font-size:12px; color:var(--muted); margin-top:3px;">
+              ${escapeHtml(fmtDateRange(it.date_start, it.date_end, it.time))}
+              ${it.page ? ` · p.${it.page}` : ""}
+            </div>
+            ${it.note ? `<div style="font-size:11.5px; color:var(--muted); margin-top:2px;">${escapeHtml(it.note)}</div>` : ""}
+          </div>
+        </label>
+      `).join("")}
+      ${offerReplace ? `
+        <label style="display:flex; gap:7px; align-items:center; padding:10px 4px 0; font-size:12px; color:var(--muted);">
+          <input type="checkbox" id="sched-replace-flag" ${replaceChecked}>
+          이 폴더의 기존 일정을 모두 지우고 위 목록으로 교체
+        </label>` : ""}
+      <div class="sched-confirm-btns">
+        <button onclick="closeScheduleConfirm()">건너뛰기</button>
+        <button class="primary" id="sched-confirm-add">선택한 일정 추가</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeScheduleConfirm(); });
+  document.getElementById("sched-confirm-add").addEventListener("click", async () => {
+    const checked = Array.from(overlay.querySelectorAll(".sched-confirm-row input[type=checkbox]:checked"))
+      .map(cb => items[parseInt(cb.dataset.idx, 10)])
+      .filter(Boolean);
+    if (!checked.length) { closeScheduleConfirm(); return; }
+    const replaceFlag = document.getElementById("sched-replace-flag");
+    const replaceFolder = replaceFlag ? replaceFlag.checked : false;
+    try {
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder_id: CURRENT_FOLDER_ID,
+          file_hash: fileHash,
+          events: checked,
+          replace_folder: replaceFolder,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "추가 실패" }));
+        alert(err.error || "추가 실패");
+        return;
+      }
+      const data = await res.json();
+      closeScheduleConfirm();
+      await loadFolderSchedule();
+      const status = document.getElementById("upload-status");
+      const replaceMsg = data.deleted_count ? ` (기존 ${data.deleted_count}건 삭제)` : "";
+      if (status) status.innerHTML = `<div class="summary">일정 ${data.count}개가 이 폴더에 추가됐습니다${replaceMsg}.</div>`;
+    } catch (e) {
+      alert("추가 실패: " + e.message);
+    }
+  });
+}
+
+function closeScheduleConfirm() {
+  document.querySelectorAll(".sched-confirm").forEach(el => el.remove());
+}
+
+async function loadAttachments() {
+  const wrap = document.getElementById("attachments-list");
+  const mergedWrap = document.getElementById("merged-summary");
+  const schedWrap = document.getElementById("folder-schedule");
+  if (!wrap) return;
+  if (!CURRENT_FOLDER_ID) {
+    if (mergedWrap) mergedWrap.innerHTML = "";
+    if (schedWrap) schedWrap.innerHTML = "";
+    wrap.innerHTML = `<div class="empty">먼저 공고 폴더를 만들거나 선택해주세요.</div>`;
+    document.getElementById("cnt-attach").textContent = "0";
+    return;
+  }
+  loadFolderSchedule();   // 병렬로 일정 카드도 로드
+  try {
+    const res = await fetch(`/api/attachments?folder_id=${CURRENT_FOLDER_ID}&include=analysis`);
+    if (!res.ok) {
+      wrap.innerHTML = `<div class="empty">불러오기 실패 (status=${res.status})</div>`;
+      if (mergedWrap) mergedWrap.innerHTML = "";
+      document.getElementById("cnt-attach").textContent = "0";
+      return;
+    }
+    const data = await res.json();
+    const items = data.attachments || [];
+    document.getElementById("cnt-attach").textContent = items.length;
+    if (!items.length) {
+      if (mergedWrap) mergedWrap.innerHTML = "";
+      wrap.innerHTML = `<div class="empty">업로드된 첨부파일이 없습니다.</div>`;
+      return;
+    }
+
+    // 통합 요약 (분석 완료된 파일만)
+    if (mergedWrap) mergedWrap.innerHTML = renderMergedSummary(items);
+
+    // 파일별 카드 — 일정 추출은 폴더 단위로 통합됐으므로 파일별 일정 버튼은 제거.
+    wrap.innerHTML = items.map(a => {
+      const safeHash = escapeHtml(a.file_hash);
+      const safeName = escapeHtml(a.original_filename).replace(/'/g, "&#39;");
+      return `
+      <div class="attachment-card" id="att-${safeHash}">
+        <div class="ac-head">
+          <div style="flex:1; min-width:0">
+            <div class="ac-title">${escapeHtml(a.original_filename)}</div>
+            <div class="ac-meta">
+              hash <code>${safeHash}</code> ·
+              업로드 ${escapeHtml(a.uploaded_at || "-")} ·
+              상태 ${escapeHtml(a.status)}
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="add" onclick="toggleAttachment('${safeHash}')">상세</button>
+            <button class="del" onclick="deleteAttachment('${safeHash}')" title="삭제">×</button>
+          </div>
+        </div>
+        <div class="ac-detail" id="att-detail-${safeHash}">
+          <div class="empty" style="padding:10px">상세 보기를 클릭하면 결과를 불러옵니다.</div>
+        </div>
+      </div>
+    `;}).join("");
+  } catch (e) {
+    wrap.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    if (mergedWrap) mergedWrap.innerHTML = "";
+  }
+}
+
+// 여러 파일의 분석을 모아 카테고리/심각도별로 그룹핑
+function renderMergedSummary(items) {
+  const analyzed = items.filter(a => a.analysis);
+  if (!analyzed.length) {
+    return `<div class="merged-card">
+      <div class="mc-title">통합 요약</div>
+      <div class="mc-meta">아직 분석 완료된 파일이 없습니다.</div>
+    </div>`;
+  }
+
+  // 모든 자격조건/유의사항을 출처와 함께 평탄화
+  const eligs = [];
+  const warns = [];
+  for (const a of analyzed) {
+    const src = a.original_filename || "(파일명 없음)";
+    const ai = a.analysis || {};
+    for (const it of (ai.eligibility && ai.eligibility.items) || []) {
+      eligs.push({ ...it, src });
+    }
+    for (const it of (ai.warnings && ai.warnings.items) || []) {
+      warns.push({ ...it, src });
+    }
+  }
+
+  const eligByCat = groupBy(eligs, x => x.category || "other");
+  const warnsBySev = groupBy(warns, x => x.severity || "low");
+
+  const catOrder = ["business_stage", "age", "location", "industry", "revenue", "employees", "other"];
+  const sevOrder = ["high", "medium", "low"];
+
+  const eligHtml = catOrder
+    .filter(c => (eligByCat[c] || []).length)
+    .map(c => `
+      <div class="mc-group">
+        <div class="mc-group-label">${escapeHtml(CATEGORY_LABEL_ELIG[c] || c)} (${eligByCat[c].length})</div>
+        ${eligByCat[c].map(it => `
+          <div class="extract-item">
+            <span class="src-pill">${escapeHtml(it.src)}</span>
+            <span class="page-pill">p.${it.page}</span>
+            ${escapeHtml(it.text)}
+          </div>
+        `).join("")}
+      </div>
+    `).join("");
+
+  const warnsHtml = sevOrder
+    .filter(s => (warnsBySev[s] || []).length)
+    .map(s => `
+      <div class="mc-group">
+        <div class="mc-group-label">${escapeHtml(SEVERITY_LABEL[s] || s)} (${warnsBySev[s].length})</div>
+        ${warnsBySev[s].map(it => `
+          <div class="extract-item ${escapeHtml(s)}">
+            <span class="src-pill">${escapeHtml(it.src)}</span>
+            <span class="page-pill">p.${it.page}</span>
+            ${escapeHtml(it.text)}
+          </div>
+        `).join("")}
+      </div>
+    `).join("");
+
+  const sevCount = sevOrder.map(s => `${SEVERITY_LABEL[s]} ${(warnsBySev[s] || []).length}`).join(" · ");
+
+  return `
+    <div class="merged-card">
+      <div class="mc-title">📋 통합 요약 — 파일 ${analyzed.length}개</div>
+      <div class="mc-meta">
+        자격조건 <b>${eligs.length}</b>건 · 유의사항 <b>${warns.length}</b>건 (${sevCount})
+      </div>
+
+      <div class="mc-sub-h">자격 조건</div>
+      ${eligHtml || `<div class="empty">추출된 항목 없음</div>`}
+
+      <div class="mc-sub-h">유의사항</div>
+      ${warnsHtml || `<div class="empty">추출된 항목 없음</div>`}
+    </div>
+  `;
+}
+
+function groupBy(arr, keyFn) {
+  const out = {};
+  for (const x of arr) {
+    const k = keyFn(x);
+    (out[k] = out[k] || []).push(x);
+  }
+  return out;
+}
+
+async function toggleAttachment(fileHash) {
+  const card = document.getElementById(`att-${fileHash}`);
+  if (!card) return;
+  const wasExpanded = card.classList.contains("expanded");
+  card.classList.toggle("expanded");
+  if (wasExpanded) return;
+  const detail = document.getElementById(`att-detail-${fileHash}`);
+  detail.innerHTML = `<div class="empty" style="padding:10px">불러오는 중...</div>`;
+  try {
+    const res = await fetch(`/api/attachments/${encodeURIComponent(fileHash)}`);
+    if (!res.ok) {
+      detail.innerHTML = `<div class="error">불러오기 실패 (status=${res.status})</div>`;
+      return;
+    }
+    const data = await res.json();
+    detail.innerHTML = renderAnalysis(data.analysis);
+  } catch (e) {
+    detail.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderAnalysis(a) {
+  if (!a) return `<div class="empty">분석 결과 없음</div>`;
+  const elig = a.eligibility || { items: [], extraction_note: "" };
+  const warns = a.warnings || { items: [], extraction_note: "" };
+  const missing = a.missing_sections || [];
+  const issues = a.validation_issues || [];
+
+  return `
+    <div class="summary">
+      페이지 <b>${a.page_count}</b> ·
+      자격조건 <b>${elig.items.length}</b>건 ·
+      유의사항 <b>${warns.items.length}</b>건 ·
+      분석 소요 ${a.elapsed_seconds}s
+      ${a.cache_hit ? " · <b>캐시 히트</b>" : ""}
+    </div>
+
+    ${missing.length ? `<div class="notes-box">
+      <span class="nt-label">추출 실패한 섹션:</span>${missing.map(escapeHtml).join(", ")} — 별첨 공고문에 있을 수 있으니 함께 확인하세요.
+    </div>` : ""}
+
+    ${issues.length ? `<div class="notes-box" style="background:#fee2e2; border-color:#fecaca; color:#991b1b">
+      <span class="nt-label">검증 경고:</span>${issues.map(escapeHtml).join("; ")}
+    </div>` : ""}
+
+    <div class="section-h">자격 조건</div>
+    ${elig.items.length ? elig.items.map(it => `
+      <div class="extract-item">
+        <span class="page-pill">p.${it.page}</span>
+        ${escapeHtml(it.text)}
+        <span class="e-cat">${escapeHtml(CATEGORY_LABEL_ELIG[it.category] || it.category)}</span>
+      </div>
+    `).join("") : `<div class="empty">추출된 항목 없음</div>`}
+    ${elig.extraction_note ? `<div class="ac-meta" style="margin-top:4px">참고: ${escapeHtml(elig.extraction_note)}</div>` : ""}
+
+    <div class="section-h">유의사항</div>
+    ${warns.items.length ? warns.items.map(it => `
+      <div class="extract-item ${it.severity}">
+        <span class="page-pill">p.${it.page}</span>
+        ${escapeHtml(it.text)}
+        <span class="e-cat">${escapeHtml(SEVERITY_LABEL[it.severity] || it.severity)}</span>
+      </div>
+    `).join("") : `<div class="empty">추출된 항목 없음</div>`}
+    ${warns.extraction_note ? `<div class="ac-meta" style="margin-top:4px">참고: ${escapeHtml(warns.extraction_note)}</div>` : ""}
+  `;
+}
+
+async function deleteAttachment(fileHash) {
+  if (!confirm("이 첨부파일과 분석 결과를 삭제할까요?")) return;
+  const res = await fetch(`/api/attachments/${encodeURIComponent(fileHash)}`, { method: "DELETE" });
+  if (!res.ok) {
+    alert("삭제 실패");
+    return;
+  }
+  await loadFolders();
+  await loadAttachments();
+}
+
+// ─── 캘린더 탭 ────────────────────────────────────────────────────────────
+// 폴더별 색 팔레트 (folder_id 순서대로 순환)
+const CAL_PALETTE = [
+  { bg: "#dbeafe", fg: "#1e40af", swatch: "#3b82f6" },  // blue
+  { bg: "#dcfce7", fg: "#166534", swatch: "#22c55e" },  // green
+  { bg: "#fef3c7", fg: "#92400e", swatch: "#f59e0b" },  // amber
+  { bg: "#fce7f3", fg: "#9d174d", swatch: "#ec4899" },  // pink
+  { bg: "#e0e7ff", fg: "#3730a3", swatch: "#6366f1" },  // indigo
+  { bg: "#cffafe", fg: "#155e75", swatch: "#06b6d4" },  // cyan
+  { bg: "#fee2e2", fg: "#991b1b", swatch: "#ef4444" },  // red
+  { bg: "#ede9fe", fg: "#5b21b6", swatch: "#8b5cf6" },  // violet
+  { bg: "#fef9c3", fg: "#854d0e", swatch: "#eab308" },  // yellow
+  { bg: "#d1fae5", fg: "#065f46", swatch: "#10b981" },  // emerald
+];
+
+let CAL_DATA = { events: [], folders: [] };
+let CAL_FOLDER_COLOR = new Map();  // folder_id → palette idx
+let CAL_VIEW = new Date();         // 현재 보는 달 (1일로 정규화)
+let CAL_SELECTED = new Set();      // 선택된 event_id 집합
+
+function calMonthKey(d) { return d.getFullYear() * 100 + (d.getMonth() + 1); }
+function ymd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+function parseISODate(s) {
+  // 'YYYY-MM-DD' → Date(local 자정). null safe.
+  if (!s || typeof s !== "string") return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+}
+
+async function loadCalendar() {
+  try {
+    const res = await fetch("/api/schedule/all");
+    if (!res.ok) throw new Error("일정 조회 실패");
+    CAL_DATA = await res.json();
+  } catch (e) {
+    CAL_DATA = { events: [], folders: [] };
+  }
+  // 폴더 → 색 매핑
+  CAL_FOLDER_COLOR = new Map();
+  (CAL_DATA.folders || []).forEach((f, i) => {
+    CAL_FOLDER_COLOR.set(f.id, i % CAL_PALETTE.length);
+  });
+  document.getElementById("cnt-cal").textContent = (CAL_DATA.events || []).length;
+  // 첫 진입 시 가장 가까운 일정 있는 달로 이동
+  if (CAL_DATA.events.length && calMonthKey(CAL_VIEW) === calMonthKey(new Date())) {
+    const upcoming = CAL_DATA.events.find(e => e.date_start >= ymd(new Date()))
+                  || CAL_DATA.events[0];
+    if (upcoming) {
+      const d = parseISODate(upcoming.date_start);
+      if (d) CAL_VIEW = new Date(d.getFullYear(), d.getMonth(), 1);
+    }
+  } else {
+    CAL_VIEW = new Date(CAL_VIEW.getFullYear(), CAL_VIEW.getMonth(), 1);
+  }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const label = document.getElementById("cal-month-label");
+  label.textContent = `${CAL_VIEW.getFullYear()}년 ${CAL_VIEW.getMonth() + 1}월`;
+
+  // 범례
+  const legend = document.getElementById("cal-legend");
+  legend.innerHTML = (CAL_DATA.folders || []).map(f => {
+    const idx = CAL_FOLDER_COLOR.get(f.id) || 0;
+    const c = CAL_PALETTE[idx];
+    return `<span class="leg-item">
+      <span class="leg-swatch" style="background:${c.swatch}"></span>
+      ${escapeHtml(f.name)}
+    </span>`;
+  }).join("") || `<span class="ac-meta">아직 폴더 없음</span>`;
+
+  // 그리드 — 일~토 헤더 + 6주(42칸)
+  const grid = document.getElementById("cal-grid");
+  const empty = document.getElementById("cal-empty");
+  empty.style.display = (CAL_DATA.events || []).length ? "none" : "block";
+
+  const year = CAL_VIEW.getFullYear();
+  const month = CAL_VIEW.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const startWeekday = firstOfMonth.getDay();  // 0=일
+  const gridStart = new Date(year, month, 1 - startWeekday);
+
+  const todayStr = ymd(new Date());
+
+  // 이벤트 → 날짜별 버킷. 기간 이벤트는 모든 날에 칩.
+  const byDate = new Map();  // 'YYYY-MM-DD' → [event...]
+  for (const ev of (CAL_DATA.events || [])) {
+    const ds = parseISODate(ev.date_start);
+    if (!ds) continue;
+    const de = parseISODate(ev.date_end) || ds;
+    for (let d = new Date(ds); d <= de; d.setDate(d.getDate() + 1)) {
+      const key = ymd(d);
+      if (!byDate.has(key)) byDate.set(key, []);
+      byDate.get(key).push(ev);
+    }
+  }
+
+  const dowHeaders = ["일","월","화","수","목","금","토"];
+  let html = dowHeaders.map((d, i) =>
+    `<div class="cal-dow ${i===0?'sun':''} ${i===6?'sat':''}">${d}</div>`
+  ).join("");
+
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    const dim = d.getMonth() !== month ? "dim" : "";
+    const dow = d.getDay();
+    const isToday = ymd(d) === todayStr;
+    const key = ymd(d);
+    const evs = byDate.get(key) || [];
+
+    const chips = evs.map(ev => {
+      const idx = CAL_FOLDER_COLOR.get(ev.folder_id) || 0;
+      const c = CAL_PALETTE[idx];
+      const selected = CAL_SELECTED.has(ev.id) ? "selected" : "";
+      const labelText = SCHEDULE_TYPE_LABEL[ev.type] || ev.type;
+      const tip = `[${ev.folder_name}] ${ev.title}\n${ev.date_start}${ev.date_end ? ' ~ ' + ev.date_end : ''}${ev.time ? ' ' + ev.time : ''}${ev.note ? '\n' + ev.note : ''}`;
+      return `<div class="cal-chip ${selected}" style="background:${c.bg}; color:${c.fg}"
+                title="${escapeHtml(tip)}" onclick="toggleEventSelect(${ev.id}, event)">
+        <input type="checkbox" ${CAL_SELECTED.has(ev.id) ? "checked" : ""}
+          onclick="event.stopPropagation(); toggleEventSelect(${ev.id})">
+        <span class="chip-text">${escapeHtml(ev.title)}</span>
+      </div>`;
+    }).join("");
+
+    html += `<div class="cal-cell ${dim} ${isToday ? 'today' : ''}
+                  ${dow===0?'sun':''} ${dow===6?'sat':''}">
+      <span class="cal-daynum">${d.getDate()}</span>
+      ${chips}
+    </div>`;
+  }
+
+  grid.innerHTML = html;
+  updateSelectionUI();
+}
+
+function calPrev() {
+  CAL_VIEW = new Date(CAL_VIEW.getFullYear(), CAL_VIEW.getMonth() - 1, 1);
+  renderCalendar();
+}
+function calNext() {
+  CAL_VIEW = new Date(CAL_VIEW.getFullYear(), CAL_VIEW.getMonth() + 1, 1);
+  renderCalendar();
+}
+function calToday() {
+  const now = new Date();
+  CAL_VIEW = new Date(now.getFullYear(), now.getMonth(), 1);
+  renderCalendar();
+}
+
+function toggleEventSelect(eventId) {
+  if (CAL_SELECTED.has(eventId)) CAL_SELECTED.delete(eventId);
+  else CAL_SELECTED.add(eventId);
+  renderCalendar();
+}
+
+function selectAllVisible() {
+  // 지금 보고 있는 달에 등장하는 모든 이벤트
+  const year = CAL_VIEW.getFullYear();
+  const month = CAL_VIEW.getMonth();
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+  for (const ev of (CAL_DATA.events || [])) {
+    const ds = parseISODate(ev.date_start);
+    const de = parseISODate(ev.date_end) || ds;
+    if (!ds) continue;
+    if (de >= monthStart && ds <= monthEnd) {
+      CAL_SELECTED.add(ev.id);
+    }
+  }
+  renderCalendar();
+}
+
+function clearSelection() {
+  CAL_SELECTED.clear();
+  renderCalendar();
+}
+
+function updateSelectionUI() {
+  document.getElementById("cal-sel-count").textContent = `선택 ${CAL_SELECTED.size}개`;
+}
+
+async function downloadSelectedIcs() {
+  if (!CAL_SELECTED.size) {
+    alert("ICS 로 내보낼 일정을 먼저 선택하세요.");
+    return;
+  }
+  try {
+    const res = await fetch("/api/schedule/ics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_ids: Array.from(CAL_SELECTED) }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "ICS 생성 실패" }));
+      alert(err.error || "ICS 생성 실패");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "selected-schedule.ics";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    alert("ICS 다운로드 실패: " + e.message);
+  }
+}
+
 // ─── 초기화 ──────────────────────────────────────────────────────────────
 (async () => {
   await loadMaster();
   setupDocAutocomplete();
   setBusinessType(getBusinessType());
   setWheelToToday();
+  setupUploadZone();
   renderMyDocs();
+  await loadFolders();
+  // 캘린더 카운트 미리 로드 (탭 배지)
+  fetch("/api/schedule/all").then(r => r.ok ? r.json() : null).then(d => {
+    if (d) document.getElementById("cnt-cal").textContent = (d.events || []).length;
+  }).catch(() => {});
   // 수동 검증 탭의 기본 화면도 준비
   document.querySelectorAll("#required-list, #user-list").forEach(el => el.innerHTML = "");
 })();
