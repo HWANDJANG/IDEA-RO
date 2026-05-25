@@ -32,6 +32,65 @@ from planner.document_master import DOCUMENT_MASTER
 BusinessType = Literal["individual", "corporate"]
 
 
+# 공고 유형 — 6개 큰 묶음 (K-Startup 11개 분류 + 비-K-Startup R&D)
+ANNOUNCEMENT_TYPE_INFO: dict[str, dict[str, str]] = {
+    "funding": {"emoji": "💰", "label": "자금 지원"},
+    "space":   {"emoji": "🏢", "label": "입주·공간"},
+    "edu":     {"emoji": "🎓", "label": "교육·멘토링"},
+    "rnd":     {"emoji": "🔬", "label": "R&D·기술"},
+    "global":  {"emoji": "🌏", "label": "판로·글로벌"},
+    "event":   {"emoji": "🎯", "label": "행사·네트워크"},
+    "other":   {"emoji": "📌", "label": "기타"},
+}
+
+
+def classify_announcement_type(
+    raw_meta: dict | None,
+    source_code: str | None,
+    title: str | None = None,
+) -> dict:
+    """공고 유형을 6개 큰 묶음으로 분류한다.
+
+    K-Startup 의 supt_biz_clsfc 메타가 있으면 그것 기준.
+    없으면 출처(NRF/IRIS/NTIS=R&D) 또는 제목 키워드로 추정. 끝까지 모르면 '기타'.
+    """
+    code = "other"
+    clsfc = ""
+    if raw_meta:
+        c = raw_meta.get("supt_biz_clsfc")
+        if isinstance(c, str):
+            clsfc = c
+    if clsfc:
+        if "사업화" in clsfc or "정책자금" in clsfc or "융자" in clsfc:
+            code = "funding"
+        elif "시설" in clsfc or "공간" in clsfc or "보육" in clsfc:
+            code = "space"
+        elif "멘토" in clsfc or "컨설팅" in clsfc or "교육" in clsfc:
+            code = "edu"
+        elif "기술개발" in clsfc or "R&D" in clsfc or "R&amp;D" in clsfc:
+            code = "rnd"
+        elif "판로" in clsfc or "해외" in clsfc or "글로벌" in clsfc:
+            code = "global"
+        elif "행사" in clsfc or "네트워크" in clsfc or "인력" in clsfc:
+            code = "event"
+    if code == "other" and source_code in ("nrf", "iris", "ntis"):
+        code = "rnd"
+    if code == "other" and title:
+        t = title.lower()
+        if "입주" in title or "보육센터" in title or "창업보육" in title or "공간" in title:
+            code = "space"
+        elif "r&d" in t or "기술개발" in title or "연구개발" in title:
+            code = "rnd"
+        elif "교육" in title or "멘토" in title or "컨설팅" in title or "아카데미" in title:
+            code = "edu"
+        elif "행사" in title or "경진대회" in title or "공모전" in title or "네트워크" in title or "포럼" in title:
+            code = "event"
+        elif "수출" in title or "해외" in title or "글로벌" in title or "판로" in title:
+            code = "global"
+    info = ANNOUNCEMENT_TYPE_INFO[code]
+    return {"code": code, "emoji": info["emoji"], "label": info["label"]}
+
+
 class MatchedDocument(TypedDict):
     name: str
     required_within_days: Optional[int]

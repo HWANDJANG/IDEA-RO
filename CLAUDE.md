@@ -119,6 +119,27 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 5. `format_analysis_summary` 에 직렬화 로직 추가 (비교/채팅용)
 6. `dashboard.html` 의 `renderAnalysis` + `renderMergedSummary` 에 표시 추가
 
+### 새 첨부 스크래퍼 추가 (다른 정부 사이트)
+
+1. `attach_fetcher.py` 에 `_scrape_{source}(url) -> list[dict]` 추가 (`{"name": str, "url": str, "is_pdf": bool}`)
+2. `detect_source(url)` 에 host 매칭 분기 추가
+3. `scan_attachments_from_url(url)` 의 dispatch elif 에 등록
+4. 기본은 BeautifulSoup 으로 `a[href]` 순회 + `.pdf`/`.hwp` 등 화이트리스트. JS-차단(IRIS 형) 사이트는 `warning` 으로 fallback.
+
+### 새 캘린더 이벤트 유형 추가 (자동 분류)
+
+1. `dashboard.html` 의 `CAL_EVENT_CATEGORIES` 에 `{label, icon}` 추가 (색은 X — 색=폴더, 아이콘=의미)
+2. `classifyCalEvent(ev)` 의 `TYPE_MAP` (정형 type 컬럼) 또는 제목 키워드 분기에 추가
+3. **합성어 주의** — "서류평가" 는 evaluation 으로 가야 함. `평가/심사` 가 `서류` 보다 먼저 매칭되게 순서 유지
+
+### 공고 페이지 URL 첨부 자동 수집 흐름
+
+사용자가 매칭 카드의 📎 PDF → URL 탭에서 K-Startup/NRF/NTIS 공고 URL 붙여넣기:
+1. `POST /api/attachments/scan-url` → `scan_attachments_from_url(url)` → `{source, files:[...], warning?}`
+2. 프론트가 PDF 만 선택 가능하게 체크박스 표시 (HWP 등은 disabled)
+3. 사용자 선택 → `POST /api/attachments/import-url` 반복 호출 (1건씩 download_to_bytes → analyze_pdf → DB)
+4. **Synap 뷰어 URL 직접 처리 X** — K-Startup `a.btn_down[href]` 의 다운로드 URL 사용 (`/afile/fileDownload/{key}`)
+
 ---
 
 ## 안티패턴 (하지 말 것)
@@ -132,6 +153,11 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 | 새 OAuth provider 추가 시 기존 helper 와 다른 패턴 | `auth.py` 미러링 패턴 따라하기 |
 | `localhost` 와 `127.0.0.1` 섞어 쓰기 | `127.0.0.1` 통일 (Naver 강제) |
 | 한 LLM 호출 결과를 캐싱 없이 매번 재계산 | derived 캐시 패턴 (`storage.load_derived` / `save_derived`) |
+| **캘린더 기간 이벤트를 매일 칸에 칩으로 복제** | **주 단위 timeline bar (`grid-column: span N`)** — 데이터 도배 방지 |
+| **캘린더에 카테고리 색을 폴더 색보다 우선 적용** | **bar 색 = 폴더(공고), 카테고리 = 아이콘 prefix, D-day = 작은 빨강 배지** — 공고 정체성이 1순위 |
+| **LLM 응답에 `escapeHtml` 만 적용해서 raw 마크다운 노출** | `_renderCompareMarkdown` 사용 — escape 후 패턴 치환 (XSS 안전) |
+| **K-Startup 첨부에 Synap 뷰어 URL 직접 사용** | `a.btn_down[href]` 의 다운로드 URL 사용 (`/afile/fileDownload/{key}`) |
+| **연락처 (전화+URL) 를 escape 만 한 plain text 로** | `_formatContact` — 전화 포맷팅 + URL 한글 디코딩 + 호스트 위주 표시 + `tel:`/`http:` 링크 |
 
 ---
 
@@ -160,8 +186,12 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 | 카카오/Google/Naver 캘린더 호출 | [web.py](planner/web.py) `_handle_{provider}_calendar_insert` |
 | 사용자별 보유 서류 | [web.py](planner/web.py) `_handle_my_docs_list`/`_save` |
 | 매칭 로직 | [matcher.py](planner/matcher.py) `compute_profile_fit`, `match_announcement` |
+| **공고 유형 분류 (6묶음)** | [matcher.py](planner/matcher.py) `classify_announcement_type` + `ANNOUNCEMENT_TYPE_INFO` |
+| **공고 URL → 첨부 PDF 스크랩** | [attach_fetcher.py](planner/attach_fetcher.py) `scan_attachments_from_url`, `download_to_bytes` |
 | 서류 마스터 (30개) | [document_master.py](planner/document_master.py) |
 | 프론트 (6탭 SPA) | [public/dashboard.html](public/dashboard.html) |
+| **캘린더 렌더 (주 단위 bar)** | [public/dashboard.html](public/dashboard.html) `renderCalendar` + `CAL_EVENT_CATEGORIES` |
+| **비교 결과 마크다운 렌더** | [public/dashboard.html](public/dashboard.html) `_renderCompareMarkdown`, `_renderInlineMd` |
 | 로그인 모달 | [public/index.html](public/index.html) |
 
 ---

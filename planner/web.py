@@ -63,7 +63,7 @@ from planner.ics_export import (
     fetch_announcement_events,
     task_to_event,
 )
-from planner.matcher import match_announcement, compute_profile_fit
+from planner.matcher import match_announcement, compute_profile_fit, classify_announcement_type
 from planner.multipart import MultipartError, parse_multipart
 from planner.paths import DB_PATH, STATIC_DIR  # noqa: F401  (DB_PATH 는 아래 라우트에서 사용)
 
@@ -274,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
             q = (
                 "SELECT a.id, a.external_id, a.title, a.status, a.d_day, "
                 "       a.start_date, a.end_date, a.department, a.contact, "
-                "       a.detail_url, a.content_text, "
+                "       a.detail_url, a.content_text, a.raw_meta, "
                 "       s.code AS source_code, s.name AS source_name, "
                 "       c.name AS category_name "
                 "FROM announcements a "
@@ -296,10 +296,21 @@ class Handler(BaseHTTPRequestHandler):
         compact = []
         for r in rows:
             content = r.get("content_text") or ""
+            raw_meta_json = r.get("raw_meta")
+            raw_meta_obj = None
+            if raw_meta_json:
+                try:
+                    raw_meta_obj = json.loads(raw_meta_json)
+                except (json.JSONDecodeError, TypeError):
+                    raw_meta_obj = None
+            type_info = classify_announcement_type(
+                raw_meta_obj, r.get("source_code"), r.get("title")
+            )
             compact.append({
-                **{k: v for k, v in r.items() if k != "content_text"},
+                **{k: v for k, v in r.items() if k not in ("content_text", "raw_meta")},
                 "content_preview": content[:300],
                 "content_length": len(content),
+                "type": type_info,
             })
         self._send_json({"announcements": compact, "total": len(compact)})
 
@@ -329,6 +340,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/upload":
             self._handle_upload()
+            return
+        if path == "/api/attachments/scan-url":
+            self._handle_scan_url()
+            return
+        if path == "/api/attachments/import-url":
+            self._handle_import_url()
             return
         if path == "/api/folders":
             self._handle_folder_create()
@@ -683,6 +700,116 @@ class Handler(BaseHTTPRequestHandler):
                 conn.close()
 
         self._send_json({"file_hash": file_hash, "analysis": analysis, "folder_id": folder_id})
+
+    def _handle_scan_url(self) -> None:
+        """공고 페이지 URL → 첨부 파일 목록 (다운로드 안 함, 미리보기만)."""
+        user_id = self._require_user_id()
+        if user_id is None: return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            self._send_json({"error": f"invalid JSON: {e}"}, status=400)
+            return
+        url = (data.get("url") or "").strip()
+        if not url.startswith(("http://", "https://")):
+            self._send_json({"error": "유효한 URL 이 필요합니다 (http:// 또는 https://)"}, status=400)
+            return
+        from planner.attach_fetcher import scan_attachments_from_url
+        result = scan_attachments_from_url(url)
+        self._send_json(result)
+
+    def _handle_import_url(self) -> None:
+        """첨부 URL 1건을 서버가 다운로드 → analyze_pdf → 폴더에 저장."""
+        from planner.analyzer.analyzer import analyze_pdf
+        from planner.analyzer.llm.base import LLMError
+        from planner.attach_fetcher import download_to_bytes
+
+        user_id = self._require_user_id()
+        if user_id is None: return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            self._send_json({"error": f"invalid JSON: {e}"}, status=400)
+            return
+        url = (data.get("url") or "").strip()
+        filename = (data.get("filename") or "downloaded.pdf").strip()
+        try:
+            folder_id = int(data.get("folder_id"))
+        except (TypeError, ValueError):
+            self._send_json({"error": "folder_id (int) 가 필요합니다"}, status=400)
+            return
+        announcement_id = data.get("announcement_id")
+        if not url.startswith(("http://", "https://")):
+            self._send_json({"error": "유효한 URL 이 필요합니다"}, status=400)
+            return
+        if not filename.lower().endswith(".pdf"):
+            self._send_json({"error": "PDF 파일만 분석 가능합니다 (.pdf)"}, status=415)
+            return
+
+        # 폴더 소유권 검증
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            if not self._user_owns_folder(conn, folder_id, user_id):
+                self._send_json({"error": "folder not yours"}, status=403)
+                return
+        finally:
+            conn.close()
+
+        # 원격 다운로드
+        try:
+            pdf_bytes, content_type = download_to_bytes(url)
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"다운로드 실패: {e}"}, status=502)
+            return
+        if not pdf_bytes:
+            self._send_json({"error": "빈 파일"}, status=502)
+            return
+        # 간단 검증: PDF 매직 바이트
+        if not pdf_bytes.startswith(b"%PDF"):
+            self._send_json({
+                "error": f"PDF 가 아닌 응답 (Content-Type: {content_type}). URL 이 PDF 직접 링크인지 확인해주세요."
+            }, status=415)
+            return
+
+        # 분석 (캐시 히트 시 즉시 반환)
+        try:
+            analysis = analyze_pdf(pdf_bytes, original_filename=filename)
+        except LLMError as e:
+            self._send_json({"error": f"LLM 호출 실패: {e}"}, status=502)
+            return
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"분석 실패: {e}"}, status=500)
+            return
+
+        # DB 기록 (업로드와 동일 패턴)
+        file_hash = analysis["file_hash"]
+        if DB_PATH.exists():
+            conn = sqlite3.connect(DB_PATH)
+            try:
+                conn.execute(
+                    "INSERT INTO uploaded_attachments(file_hash, original_filename, announcement_id, folder_id, user_id, status, analyzed_at) "
+                    "VALUES (?,?,?,?,?, 'done', CURRENT_TIMESTAMP) "
+                    "ON CONFLICT(file_hash, user_id) DO UPDATE SET "
+                    "  original_filename=excluded.original_filename, "
+                    "  announcement_id=COALESCE(excluded.announcement_id, uploaded_attachments.announcement_id), "
+                    "  folder_id=COALESCE(excluded.folder_id, uploaded_attachments.folder_id), "
+                    "  status='done', analyzed_at=CURRENT_TIMESTAMP",
+                    (file_hash, filename, announcement_id, folder_id, user_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+        self._send_json({
+            "file_hash": file_hash,
+            "filename": filename,
+            "folder_id": folder_id,
+            "size": len(pdf_bytes),
+        })
 
     def _handle_attachments_list(self, query: str = "") -> None:
         user_id = self._require_user_id()
