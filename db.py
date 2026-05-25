@@ -132,6 +132,39 @@ CREATE TABLE IF NOT EXISTS crawl_runs (
     error           TEXT
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    auth_provider TEXT NOT NULL,           -- 'kakao' | 'google' | ...
+    provider_uid  TEXT NOT NULL,           -- 외부 시스템의 사용자 ID (카카오 id 등)
+    nickname      TEXT,
+    email         TEXT,
+    profile_img   TEXT,
+    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TEXT,
+    UNIQUE(auth_provider, provider_uid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_provider ON users(auth_provider, provider_uid);
+
+-- Phase 3: 사용자 프로필 (온보딩에서 수집한 기업 기본 정보)
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id              INTEGER PRIMARY KEY REFERENCES users(id),
+    -- 필수 (시즌 1)
+    company_name         TEXT,
+    business_type        TEXT,   -- 'individual' | 'corporate' | 'prelaunch'
+    establishment_date   TEXT,   -- ISO YYYY-MM-DD (예비창업자는 NULL)
+    region               TEXT,   -- 시·도 (예: '서울특별시')
+    industry             TEXT,   -- 업태 대분류 (예: 'IT/소프트웨어')
+    -- 부가 (시즌 2)
+    business_number      TEXT,
+    representative_name  TEXT,
+    representative_email TEXT,
+    industry_detail      TEXT,
+    -- 메타
+    created_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS attachment_folders (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL,
@@ -156,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_schedule_events_folder ON announcement_schedule_e
 
 CREATE TABLE IF NOT EXISTS uploaded_attachments (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_hash         TEXT UNIQUE NOT NULL,
+    file_hash         TEXT NOT NULL,
     original_filename TEXT NOT NULL,
     announcement_id   TEXT,
     uploaded_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -166,6 +199,39 @@ CREATE TABLE IF NOT EXISTS uploaded_attachments (
 
 CREATE INDEX IF NOT EXISTS idx_uploaded_attachments_hash ON uploaded_attachments(file_hash);
 CREATE INDEX IF NOT EXISTS idx_uploaded_attachments_announcement ON uploaded_attachments(announcement_id);
+
+-- Phase 5: Google Calendar 연동 토큰. 1 user = 1 row.
+-- refresh_token 은 사용자가 연동 해제할 때까지 영구 보관. access_token 은 expires_at 까지 캐싱.
+CREATE TABLE IF NOT EXISTS google_tokens (
+    user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token TEXT NOT NULL,
+    access_token  TEXT,
+    expires_at    TEXT,           -- ISO 시각 (UTC), access_token 만료 시점
+    scopes        TEXT,           -- 공백 구분 scope 리스트
+    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Phase 5.1: Naver Calendar 연동 토큰. (네이버 로그인 = 캘린더 권한 동시 부여)
+CREATE TABLE IF NOT EXISTS naver_tokens (
+    user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token TEXT NOT NULL,
+    access_token  TEXT,
+    expires_at    TEXT,
+    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Phase 6: 보유 서류를 localStorage 에서 DB 로 이관 (사용자별 격리)
+CREATE TABLE IF NOT EXISTS user_documents (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,                 -- 서류명 (예: '주민등록등본')
+    issued_date TEXT NOT NULL,                 -- ISO YYYY-MM-DD
+    note        TEXT,                          -- 사용자 메모 (선택)
+    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_user_documents_user ON user_documents(user_id);
 """
 
 
@@ -188,6 +254,25 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
     # (table, column, ddl-fragment)
     ("announcements", "business_id", "INTEGER REFERENCES assistance_businesses(id)"),
     ("uploaded_attachments", "folder_id", "INTEGER REFERENCES attachment_folders(id)"),
+    # Phase 2: 사용자별 자원 격리. 기존 row 는 NULL (legacy = 누구에게도 안 보임)
+    ("attachment_folders", "user_id", "INTEGER REFERENCES users(id)"),
+    ("uploaded_attachments", "user_id", "INTEGER REFERENCES users(id)"),
+    ("announcement_schedule_events", "user_id", "INTEGER REFERENCES users(id)"),
+    # Phase 3.1: 확장된 기업 프로필 (사업계획서 자동 생성 대비)
+    ("user_profiles", "english_name",        "TEXT"),
+    ("user_profiles", "corporation_number",  "TEXT"),
+    ("user_profiles", "representative_birth","TEXT"),
+    ("user_profiles", "employee_count",      "INTEGER"),
+    ("user_profiles", "founding_type",       "TEXT"),
+    ("user_profiles", "business_address",    "TEXT"),
+    ("user_profiles", "address_zonecode",    "TEXT"),
+    ("user_profiles", "phone",               "TEXT"),
+    ("user_profiles", "fax",                 "TEXT"),
+    ("user_profiles", "website",             "TEXT"),
+    ("user_profiles", "industry_code",       "TEXT"),
+    ("user_profiles", "industry_type",       "TEXT"),
+    # Phase 4: 폴더 ↔ 공고 연결 (정밀 비교: 매칭 카드에서 PDF 첨부 시 자동 생성)
+    ("attachment_folders", "announcement_id", "INTEGER REFERENCES announcements(id)"),
 ]
 
 
@@ -204,21 +289,100 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
 _POST_MIGRATION_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_announcements_business ON announcements(business_id)",
     "CREATE INDEX IF NOT EXISTS idx_uploaded_attachments_folder ON uploaded_attachments(folder_id)",
+    "CREATE INDEX IF NOT EXISTS idx_attachment_folders_user ON attachment_folders(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_uploaded_attachments_user ON uploaded_attachments(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_schedule_events_user ON announcement_schedule_events(user_id)",
+    # 같은 PDF 를 여러 사용자가 올릴 수 있도록 복합 UNIQUE (NULL 은 distinct)
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_uploaded_hash_user ON uploaded_attachments(file_hash, user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_attachment_folders_announcement ON attachment_folders(announcement_id)",
 ]
 
 
-def _ensure_default_folder(conn: sqlite3.Connection) -> None:
-    """폴더가 하나도 없으면 '기본' 폴더 생성. 폴더가 없는 기존 첨부는 거기로 편입."""
-    row = conn.execute("SELECT id FROM attachment_folders ORDER BY id LIMIT 1").fetchone()
-    if row is None:
-        cur = conn.execute("INSERT INTO attachment_folders(name) VALUES (?)", ("기본",))
-        default_id = cur.lastrowid
-    else:
-        default_id = row["id"]
-    conn.execute(
-        "UPDATE uploaded_attachments SET folder_id=? WHERE folder_id IS NULL",
-        (default_id,),
+def _rebuild_uploaded_attachments_if_needed(conn: sqlite3.Connection) -> bool:
+    """기존 DB 의 uploaded_attachments.file_hash UNIQUE 컬럼 제약을 제거하기 위해
+    테이블 재구축. (SQLite 는 ALTER TABLE DROP CONSTRAINT 미지원)
+    이미 마이그레이션됐으면 no-op. 작업 수행 시 True 반환."""
+    indexes = list(conn.execute("PRAGMA index_list(uploaded_attachments)"))
+    has_old_unique = False
+    for idx in indexes:
+        # row: (seq, name, unique, origin, partial)
+        name = idx[1]
+        unique = idx[2]
+        if unique and name.startswith("sqlite_autoindex_uploaded_attachments"):
+            cols = list(conn.execute(f"PRAGMA index_info({name})"))
+            # cols row: (seqno, cid, name)
+            if len(cols) == 1 and cols[0][2] == "file_hash":
+                has_old_unique = True
+                break
+    if not has_old_unique:
+        return False
+
+    # 새 테이블에 기존 SCHEMA 와 정확히 동일하게 (단 UNIQUE 없이) 생성 후 복사
+    conn.executescript("""
+        CREATE TABLE uploaded_attachments_new (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_hash         TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            announcement_id   TEXT,
+            folder_id         INTEGER REFERENCES attachment_folders(id),
+            user_id           INTEGER REFERENCES users(id),
+            uploaded_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            analyzed_at       TEXT,
+            status            TEXT NOT NULL DEFAULT 'pending'
+        );
+        INSERT INTO uploaded_attachments_new
+            (id, file_hash, original_filename, announcement_id, folder_id, user_id, uploaded_at, analyzed_at, status)
+        SELECT id, file_hash, original_filename, announcement_id, folder_id, user_id, uploaded_at, analyzed_at, status
+        FROM uploaded_attachments;
+        DROP TABLE uploaded_attachments;
+        ALTER TABLE uploaded_attachments_new RENAME TO uploaded_attachments;
+    """)
+    return True
+
+
+def _cleanup_legacy_resources(conn: sqlite3.Connection) -> list[str]:
+    """user_id IS NULL 인 legacy 데이터를 정리. 삭제된 PDF file_hash 들을 반환
+    (호출자가 스토리지 파일 정리)."""
+    # 사용 중인 file_hash 들 (다른 사용자가 들고있는 것) 파악
+    used_hashes = {
+        r[0] for r in conn.execute(
+            "SELECT file_hash FROM uploaded_attachments WHERE user_id IS NOT NULL"
+        )
+    }
+    legacy_hashes = [
+        r[0] for r in conn.execute(
+            "SELECT file_hash FROM uploaded_attachments WHERE user_id IS NULL"
+        )
+    ]
+    # 다른 사용자가 갖고있지 않은 hash 만 storage 에서 삭제 대상
+    to_delete_storage = [h for h in legacy_hashes if h not in used_hashes]
+
+    conn.execute("DELETE FROM announcement_schedule_events WHERE user_id IS NULL")
+    conn.execute("DELETE FROM uploaded_attachments WHERE user_id IS NULL")
+    conn.execute("DELETE FROM attachment_folders WHERE user_id IS NULL")
+    return to_delete_storage
+
+
+def ensure_default_folder_for_user(conn: sqlite3.Connection, user_id: int) -> int:
+    """사용자에게 폴더가 하나도 없으면 '기본' 폴더 생성. 폴더가 없는 user 의
+    기존 첨부(있다면)는 거기로 편입. 사용자의 첫 폴더 ID 를 반환."""
+    row = conn.execute(
+        "SELECT id FROM attachment_folders WHERE user_id=? ORDER BY id LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    if row is not None:
+        return row[0] if isinstance(row, tuple) else row["id"]
+    cur = conn.execute(
+        "INSERT INTO attachment_folders(name, user_id) VALUES (?, ?)",
+        ("기본", user_id),
     )
+    default_id = cur.lastrowid
+    conn.execute(
+        "UPDATE uploaded_attachments SET folder_id=? "
+        "WHERE folder_id IS NULL AND user_id=?",
+        (default_id, user_id),
+    )
+    return default_id
 
 
 def init_db(db_path: Path = DB_PATH) -> None:
@@ -226,9 +390,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
     with connect(db_path) as conn:
         conn.executescript(SCHEMA)
         _apply_migrations(conn)
+        # 기존 DB 의 file_hash UNIQUE 컬럼 제약 제거 (Phase 2.1)
+        rebuilt = _rebuild_uploaded_attachments_if_needed(conn)
+        if rebuilt:
+            print("[db] uploaded_attachments 테이블 재구축 완료 (file_hash UNIQUE 제거)")
         for ddl in _POST_MIGRATION_INDEXES:
             conn.execute(ddl)
-        _ensure_default_folder(conn)
+        # Legacy NULL user_id 자원 자동 정리 (Phase 2.1)
+        legacy_hashes = _cleanup_legacy_resources(conn)
+        if legacy_hashes:
+            print(f"[db] legacy 자원 {len(legacy_hashes)}개 storage 정리 중...")
+            try:
+                from planner.analyzer.storage import delete_attachment as _ds
+                for h in legacy_hashes:
+                    _ds(h)
+            except Exception as e:  # noqa: BLE001
+                print(f"[db] storage 정리 부분 실패: {e}")
+        # 사용자별 기본 폴더는 첫 로그인 이후 lazy 생성 (web.py 의 _require_user_id 에서)
 
 
 def upsert_source(conn: sqlite3.Connection, code: str, name: str, base_url: str) -> int:

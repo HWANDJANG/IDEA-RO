@@ -91,3 +91,26 @@ def delete_attachment(file_hash: str) -> None:
                 p.unlink()
             except FileNotFoundError:
                 pass
+
+
+# ─── 폴더-단위 derived 결과 캐시 (일정 dedup 등) ──────────────────────────
+# 키는 컨텐츠 해시(폴더 ID + PDF hash 들 정렬)로 만들어 invalidation 자동.
+def _derived_dir() -> Path:
+    p = _STORAGE_ROOT / "derived"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def load_derived(key: str) -> Optional[dict]:
+    path = _derived_dir() / f"{key}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def save_derived(key: str, payload: dict) -> None:
+    path = _derived_dir() / f"{key}.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -33,6 +33,8 @@ class ClaudeProvider(LLMProvider):
         user: str,
         response_schema: Optional[dict] = None,
         max_tokens: int = 2000,
+        *,
+        cached_content: Optional[str] = None,  # Claude 자체 캐싱(시스템 블록)을 이미 쓰므로 이 인자는 무시
     ) -> Union[dict, str]:
         # 시스템 프롬프트는 매번 동일 → 캐싱
         system_blocks = [{

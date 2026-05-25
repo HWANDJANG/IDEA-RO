@@ -24,5 +24,7 @@ class OpenAIProvider(LLMProvider):
         user: str,
         response_schema: Optional[dict] = None,
         max_tokens: int = 2000,
+        *,
+        cached_content: Optional[str] = None,
     ) -> Union[dict, str]:
         raise NotImplementedError
