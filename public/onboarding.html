@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Startup Assistance · 기업 정보 입력</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700;900&family=Noto+Sans+KR:wght@400;500;600;700&family=GFS+Didot&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFFEFA;
+    --bg-subtle: #F5F1EA;
+    --card: #FFFFFF;
+    --border: #EFE9DD;
+    --border-strong: #D9D0BD;
+    --text: #1A1714;
+    --muted: #6B6358;
+    --primary: #4A6BC9;
+    --accent: #D9521A;
+    --accent-soft: #F4D9C8;
+    --dark: #1A1714;
+
+    --serif-ko: "Noto Serif KR", "Nanum Myeongjo", serif;
+    --serif-en: "GFS Didot", "Noto Serif KR", serif;
+    --sans-ko: "Noto Sans KR", "Inter", -apple-system, "맑은 고딕", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: var(--sans-ko);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  header.top {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .brand {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--serif-en);
+    font-size: 22px;
+  }
+  .brand-dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--dark);
+  }
+  .close-x {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .close-x:hover { color: var(--text); }
+
+  main {
+    max-width: 620px;
+    margin: 20px auto 80px;
+    padding: 0 24px;
+  }
+  .step-label {
+    font-family: var(--serif-en);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    margin-bottom: 14px;
+  }
+  .step-label::after {
+    content: ""; display: inline-block;
+    width: 60px; height: 1px;
+    background: var(--border-strong);
+    margin-left: 16px; vertical-align: middle;
+  }
+  h1.page-title {
+    font-family: var(--serif-ko);
+    font-weight: 500;
+    font-size: 44px;
+    line-height: 1.18;
+    letter-spacing: -0.025em;
+    margin: 0 0 12px;
+  }
+  h1.page-title .italic {
+    font-style: italic;
+    font-weight: 400;
+  }
+  .page-sub {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.7;
+    margin: 0 0 40px;
+  }
+
+  /* 로그인 안내 카드 (비로그인 시) */
+  .auth-prompt {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 28px;
+    text-align: center;
+    margin: 32px 0;
+  }
+  .auth-prompt h3 {
+    font-family: var(--serif-ko);
+    font-weight: 500;
+    font-size: 22px;
+    margin: 0 0 8px;
+  }
+  .auth-prompt p {
+    color: var(--muted);
+    font-size: 13.5px;
+    margin: 0 0 20px;
+  }
+  .kakao-btn, .google-btn, .naver-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 22px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    border: none; cursor: pointer;
+  }
+  .kakao-btn  { background: #FEE500; color: #391B1B; }
+  .kakao-btn:hover  { background: #FCD800; }
+  .google-btn { background: white; color: #1F1F1F; border: 1px solid #DADCE0; }
+  .google-btn:hover { background: #F8F9FA; border-color: #C0C4C9; }
+  .naver-btn  { background: #03C75A; color: white; }
+  .naver-btn:hover  { background: #02B14F; }
+  .login-row {
+    display: flex; flex-direction: column; gap: 10px;
+    align-items: stretch; max-width: 320px; margin: 0 auto;
+  }
+  .login-row button { justify-content: center; }
+  .login-divider {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--muted); font-size: 11.5px; margin: 4px 0;
+  }
+  .login-divider::before, .login-divider::after {
+    content: ""; flex: 1; height: 1px; background: var(--border);
+  }
+  .skip-link {
+    display: block;
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: underline;
+  }
+  .skip-link:hover { color: var(--text); }
+
+  /* 폼 */
+  form { display: none; }
+  form.visible { display: block; }
+
+  .field {
+    margin-bottom: 26px;
+  }
+  .field-label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+  .field-label .req {
+    color: var(--accent);
+    margin-left: 2px;
+  }
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  input[type="text"], input[type="date"], input[type="number"],
+  select {
+    width: 100%;
+    padding: 13px 14px;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text);
+    transition: border-color 0.12s;
+  }
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--text);
+  }
+
+  /* 사업자 유형 세그먼트 */
+  .seg-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .seg-btn {
+    padding: 14px 12px;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.12s;
+    font-family: inherit;
+  }
+  .seg-btn:hover { border-color: var(--text); }
+  .seg-btn.active {
+    background: var(--dark);
+    color: #fff;
+    border-color: var(--dark);
+  }
+
+  /* 주력 분야 체크박스 */
+  .chip-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .chip {
+    position: relative;
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 14px;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.12s;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--text); }
+  .chip input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 14px; height: 14px;
+  }
+  .chip.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .chip-count {
+    font-family: var(--serif-en);
+    font-size: 12px;
+    color: var(--muted);
+    text-align: right;
+    margin-bottom: 8px;
+  }
+
+  /* 안내 */
+  .info-box {
+    background: var(--bg-subtle);
+    border-left: 3px solid var(--accent);
+    padding: 14px 16px;
+    border-radius: 4px;
+    margin: 8px 0 28px;
+  }
+  .info-box .title {
+    font-weight: 600;
+    color: var(--text);
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+  .info-box .title::before { content: "💡 "; }
+  .info-box .body {
+    color: var(--muted); font-size: 12.5px;
+  }
+
+  /* 액션 */
+  .actions {
+    margin-top: 36px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+  .skip-text {
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: underline;
+  }
+  .skip-text:hover { color: var(--text); }
+  .submit-btn {
+    background: var(--dark);
+    color: #fff;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: background 0.12s;
+  }
+  .submit-btn:hover { background: #000; }
+  .submit-btn:disabled { opacity: 0.5; cursor: wait; }
+
+  .field-hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .err-msg {
+    background: #FBEEE6;
+    color: var(--accent);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .err-msg.visible { display: block; }
+
+  @media (max-width: 640px) {
+    h1.page-title { font-size: 32px; }
+    .field-row { grid-template-columns: 1fr; }
+    .chip-grid, .seg-group { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a href="/" class="brand">
+    <span class="brand-dot"></span>
+    Startup Assistance
+  </a>
+  <a href="/" class="close-x">✕ 처음으로</a>
+</header>
+
+<main>
+  <div class="step-label">STEP 01 / 02</div>
+  <h1 class="page-title">기업 정보를<br><span class="italic">알려주세요</span></h1>
+  <p class="page-sub">업력·규모·주력 분야 정보로 자격에 맞는 공고만 자동으로 골라드립니다.</p>
+
+  <!-- 비로그인 시 표시 -->
+  <div id="auth-prompt" class="auth-prompt" style="display:none">
+    <h3>먼저 로그인이 필요해요</h3>
+    <p>기업 정보는 본인 계정에만 저장되며, 다른 사람에게 공개되지 않습니다.</p>
+    <div class="login-row">
+      <button class="kakao-btn" onclick="loginWithKakao()">
+        💬 카카오로 로그인
+      </button>
+      <button class="google-btn" onclick="loginWithGoogle()">
+        <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/>
+          <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 18.9 13 24 13c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+          <path fill="#4CAF50" d="M24 44c5.4 0 10.3-2.1 14-5.4l-6.5-5.5c-1.9 1.5-4.4 2.4-7.5 2.4-5.2 0-9.6-3.3-11.3-8l-6.6 5.1C9.7 39.6 16.3 44 24 44z"/>
+          <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 2-2 3.7-3.7 5l6.5 5.5C42 35.2 44 30 44 24c0-1.3-.1-2.6-.4-3.5z"/>
+        </svg>
+        Google 로 로그인
+      </button>
+      <button class="naver-btn" onclick="loginWithNaver()">
+        <span style="font-weight:900; font-family:'Arial Black',sans-serif; font-size:15px;">N</span>
+        네이버로 로그인
+      </button>
+    </div>
+    <a href="/dashboard" class="skip-link">로그인 없이 공고 먼저 둘러보기 (Skip)</a>
+  </div>
+
+  <!-- 로그인 후 표시되는 폼 -->
+  <form id="onb-form">
+    <div class="err-msg" id="err-msg"></div>
+
+    <div class="field">
+      <label class="field-label">사업자 유형<span class="req">*</span></label>
+      <div class="seg-group" id="seg-btype">
+        <button type="button" class="seg-btn" data-val="prelaunch">예비 창업자</button>
+        <button type="button" class="seg-btn" data-val="individual">개인 사업자</button>
+        <button type="button" class="seg-btn" data-val="corporate">법인 사업자</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="f-company">기업명<span class="req">*</span></label>
+      <input type="text" id="f-company" placeholder="(주)스타트업컴퍼니" autocomplete="organization">
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="f-est">설립연월일<span class="req" id="est-req">*</span></label>
+        <input type="date" id="f-est">
+        <div class="field-hint" id="est-hint">예비 창업자는 비워두세요.</div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="f-region">지역<span class="req">*</span></label>
+        <select id="f-region">
+          <option value="">— 선택 —</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="f-employees">그룹 인원 (대표 포함)</label>
+      <input type="number" id="f-employees" min="1" placeholder="예: 3">
+    </div>
+
+    <div class="field">
+      <label class="field-label">주력 분야 (중복 선택 가능)<span class="req">*</span></label>
+      <div class="chip-count" id="chip-count">0개 선택됨</div>
+      <div class="chip-grid" id="industry-grid"></div>
+    </div>
+
+    <div class="info-box">
+      <div class="title">매출액, 투자유치 금액은 선택입력입니다</div>
+      <div class="body">로그인 후 마이페이지에서 추가하시면 더 정확한 매칭을 받을 수 있어요.</div>
+    </div>
+
+    <div class="actions">
+      <a href="/dashboard" class="skip-text">로그인 없이 공고 먼저 둘러보기 (Skip) →</a>
+      <button type="submit" class="submit-btn" id="submit-btn">
+        맞춤 공고 받기 →
+      </button>
+    </div>
+  </form>
+</main>
+
+<script>
+  const REGION_OPTIONS = [
+    "서울특별시", "부산광역시", "대구광역시", "인천광역시",
+    "광주광역시", "대전광역시", "울산광역시", "세종특별자치시",
+    "경기도", "강원특별자치도", "충청북도", "충청남도",
+    "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도",
+  ];
+  const INDUSTRY_OPTIONS = [
+    "IT/소프트웨어", "AI/딥테크", "제조/하드웨어",
+    "콘텐츠/미디어", "푸드/바이오", "커머스/뷰티",
+    "교육", "환경/에너지", "기타",
+  ];
+  // 백엔드 user_profiles.industry 와의 매핑 (단일값으로 정규화)
+  // 멀티 선택 결과 중 첫 번째를 industry 로, 나머지는 industry_detail (콤마 join) 으로 저장
+  const INDUSTRY_TO_BACKEND = {
+    "IT/소프트웨어": "IT/소프트웨어",
+    "AI/딥테크": "IT/소프트웨어",
+    "제조/하드웨어": "제조/하드웨어",
+    "콘텐츠/미디어": "콘텐츠/미디어",
+    "푸드/바이오": "바이오/의료",
+    "커머스/뷰티": "유통/물류/이커머스",
+    "교육": "교육",
+    "환경/에너지": "환경/에너지",
+    "기타": "기타 서비스",
+  };
+
+  // ─── 초기화 ──────────────────────────────────────────────
+  let currentProfile = null;
+
+  async function init() {
+    // 1) 인증 체크
+    let me = null;
+    try {
+      const r = await fetch('/api/auth/me');
+      if (r.ok) me = await r.json();
+    } catch (_) {}
+    if (!me || !me.user) {
+      document.getElementById('auth-prompt').style.display = 'block';
+      return;
+    }
+
+    // 2) 기존 프로필 로드 — 이미 완료돼 있으면 폼 건너뛰고 바로 대시보드로
+    try {
+      const r = await fetch('/api/profile');
+      if (r.ok) {
+        const d = await r.json();
+        if (d.completed) {
+          window.location.replace('/dashboard');
+          return;
+        }
+        if (d.profile) currentProfile = d.profile;
+      }
+    } catch (_) {}
+
+    // 3) 폼 표시 + 옵션 채우기
+    document.getElementById('onb-form').classList.add('visible');
+    renderRegionOptions();
+    renderIndustryChips();
+    renderSegButtons();
+    prefillForm();
+  }
+
+  function renderRegionOptions() {
+    const sel = document.getElementById('f-region');
+    const cur = (currentProfile && currentProfile.region) || '';
+    REGION_OPTIONS.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = r;
+      if (r === cur) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function renderIndustryChips() {
+    const grid = document.getElementById('industry-grid');
+    const cur = ((currentProfile && currentProfile.industry_detail) || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (currentProfile && currentProfile.industry && !cur.includes(currentProfile.industry)) {
+      cur.push(currentProfile.industry);
+    }
+    INDUSTRY_OPTIONS.forEach((label, idx) => {
+      const id = 'ind-' + idx;
+      const wrap = document.createElement('label');
+      wrap.className = 'chip';
+      const checked = cur.includes(label);
+      if (checked) wrap.classList.add('active');
+      wrap.innerHTML = `
+        <input type="checkbox" id="${id}" value="${label}" ${checked ? 'checked' : ''}>
+        <span>#${label}</span>
+      `;
+      wrap.querySelector('input').addEventListener('change', e => {
+        wrap.classList.toggle('active', e.target.checked);
+        updateChipCount();
+      });
+      grid.appendChild(wrap);
+    });
+    updateChipCount();
+  }
+
+  function updateChipCount() {
+    const n = document.querySelectorAll('#industry-grid input:checked').length;
+    document.getElementById('chip-count').textContent = `${n}개 선택됨`;
+  }
+
+  function renderSegButtons() {
+    const group = document.getElementById('seg-btype');
+    const cur = (currentProfile && currentProfile.business_type) || '';
+    group.querySelectorAll('.seg-btn').forEach(btn => {
+      if (btn.dataset.val === cur) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        group.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // prelaunch 면 설립일 필수 해제
+        const isPre = btn.dataset.val === 'prelaunch';
+        document.getElementById('est-req').style.display = isPre ? 'none' : '';
+        document.getElementById('est-hint').textContent =
+          isPre ? '예비 창업자는 비워두세요.' : '업력 자동 계산에 사용됩니다.';
+      });
+    });
+  }
+
+  function prefillForm() {
+    if (!currentProfile) return;
+    if (currentProfile.company_name) document.getElementById('f-company').value = currentProfile.company_name;
+    if (currentProfile.establishment_date) document.getElementById('f-est').value = currentProfile.establishment_date;
+  }
+
+  // ─── 제출 ────────────────────────────────────────────────
+  function loginWithGoogle() {
+    window.location.href = '/api/auth/google/login?next=/onboarding';
+  }
+
+  function loginWithNaver() {
+    window.location.href = '/api/auth/naver/login?next=/onboarding';
+  }
+
+  function loginWithKakao() {
+    // 로그인 후 다시 /onboarding 으로 돌아오도록 next 파라미터 전달
+    window.location.href = '/api/auth/kakao/login?next=/onboarding';
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('err-msg');
+    el.textContent = msg;
+    el.classList.add('visible');
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  document.getElementById('onb-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    document.getElementById('err-msg').classList.remove('visible');
+
+    const btypeBtn = document.querySelector('#seg-btype .seg-btn.active');
+    const business_type = btypeBtn ? btypeBtn.dataset.val : null;
+    const company_name = document.getElementById('f-company').value.trim();
+    const establishment_date = document.getElementById('f-est').value || null;
+    const region = document.getElementById('f-region').value;
+    const checkedLabels = Array.from(document.querySelectorAll('#industry-grid input:checked')).map(i => i.value);
+
+    const missing = [];
+    if (!business_type) missing.push('사업자 유형');
+    if (!company_name) missing.push('기업명');
+    if (!region) missing.push('지역');
+    if (checkedLabels.length === 0) missing.push('주력 분야 (최소 1개)');
+    if (business_type !== 'prelaunch' && !establishment_date) missing.push('설립연월일');
+    if (missing.length) {
+      showError('다음 항목을 입력해주세요: ' + missing.join(', '));
+      return;
+    }
+
+    // 멀티 선택 → 백엔드 industry (단일) + industry_detail (콤마)
+    const backendPrimary = INDUSTRY_TO_BACKEND[checkedLabels[0]] || '기타 서비스';
+    const detail = checkedLabels.join(', ');
+
+    const payload = {
+      business_type,
+      company_name,
+      establishment_date,
+      region,
+      industry: backendPrimary,
+      industry_detail: detail,
+    };
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = '저장 중...';
+    try {
+      const r = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          showError('로그인이 만료되었습니다. 다시 로그인해주세요.');
+          setTimeout(loginWithKakao, 1500);
+          return;
+        }
+        throw new Error(d.error || `저장 실패 (${r.status})`);
+      }
+      // 성공 → 대시보드
+      window.location.href = '/dashboard';
+    } catch (err) {
+      showError(err.message);
+      btn.disabled = false;
+      btn.textContent = '맞춤 공고 받기 →';
+    }
+  });
+
+  init();
+</script>
+
+</body>
+</html>
