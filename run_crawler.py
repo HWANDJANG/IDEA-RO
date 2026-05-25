@@ -1,8 +1,8 @@
 """Run one or more crawlers and persist their output into SQLite.
 
 Usage:
-    python run_crawler.py           # runs every registered crawler
-    python run_crawler.py nrf bojo  # runs only the named crawlers
+    python run_crawler.py               # runs every registered crawler
+    python run_crawler.py nrf kstartup  # runs only the named crawlers
 """
 
 from __future__ import annotations
@@ -17,12 +17,16 @@ from crawlers.base import (
     AssistanceBusinessRecord,
     BaseCrawler,
 )
-from crawlers.bojo import BojoCrawler
+from crawlers.iris import IrisCrawler
+from crawlers.kstartup import KstartupCrawler
 from crawlers.nrf import NrfCrawler
+from crawlers.ntis import NtisCrawler
 
 CRAWLERS: dict[str, type[BaseCrawler]] = {
     "nrf": NrfCrawler,
-    "bojo": BojoCrawler,
+    "kstartup": KstartupCrawler,
+    "iris": IrisCrawler,
+    "ntis": NtisCrawler,
 }
 
 
