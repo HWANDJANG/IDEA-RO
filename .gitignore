@@ -23,3 +23,12 @@ Thumbs.db
 # Logs / temp
 *.log
 *.tmp
+
+# Runtime data — DB와 사용자 업로드/크롤러 임시 파일
+announcements.db
+announcements.db-journal
+downloads/
+planner/storage/pdfs/
+planner/storage/extracts/
+planner/storage/analyses/
+planner/storage/derived/
