@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>아이디어 검증 — IDEA-RO</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: "Noto Sans KR", "Inter", -apple-system, "맑은 고딕", sans-serif;
+      background: #F8F5F0;
+      color: #1A1714;
+      display: flex; flex-direction: column;
+    }
+    .ideas-topbar {
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 18px;
+      background: #fff;
+      border-bottom: 1px solid #E5DED2;
+      height: 50px;
+    }
+    .ideas-back {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 7px 13px;
+      border-radius: 8px;
+      background: #F4ECE0;
+      color: #1A1714;
+      text-decoration: none;
+      font-size: 13px; font-weight: 600;
+      transition: background 0.12s;
+    }
+    .ideas-back:hover { background: #E8DCC8; }
+    .ideas-back-arrow { font-size: 14px; }
+    .ideas-brand {
+      font-family: "GFS Didot", "Noto Serif KR", serif;
+      font-size: 17px;
+      letter-spacing: 0.01em;
+      color: #1A1714;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ideas-brand-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: #1A1714;
+    }
+    .ideas-sub {
+      font-size: 12px; color: #8A8275;
+      font-weight: 500;
+    }
+    .ideas-frame-wrap {
+      flex: 1; position: relative;
+      background: #fff;
+    }
+    .ideas-frame-wrap iframe {
+      width: 100%; height: 100%;
+      border: 0; display: block;
+    }
+    @media (max-width: 600px) {
+      .ideas-sub { display: none; }
+      .ideas-topbar { padding: 8px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="ideas-topbar">
+  <a class="ideas-back" href="/">
+    <span class="ideas-back-arrow">←</span>
+    메인으로
+  </a>
+  <div class="ideas-brand">
+    <span class="ideas-brand-dot"></span>
+    <span>아이디어 검증</span>
+    <span class="ideas-sub">· evaluate-idea</span>
+  </div>
+  <div style="width:88px"></div>
+</header>
+
+<div class="ideas-frame-wrap">
+  <iframe
+    src="https://evaluate-idea.vercel.app/vision.html"
+    title="아이디어 검증"
+    referrerpolicy="no-referrer-when-downgrade"
+    loading="lazy"
+    allow="clipboard-read; clipboard-write"
+  ></iframe>
+</div>
+
+</body>
+</html>

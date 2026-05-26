@@ -7598,9 +7598,9 @@ function setupWorkspaceSwitcher() {
   document.querySelectorAll(".sb-switch-item").forEach(it => {
     it.addEventListener("click", e => {
       e.stopPropagation();
-      // 아이디어 검증은 외부 서비스로 현재 탭 이동 (워크스페이스 전환 X)
+      // 아이디어 검증은 우리 /ideas 페이지(iframe 래핑)로 이동 — 메인 복귀 버튼 포함
       if (it.dataset.workspace === "ideas") {
-        location.href = "https://evaluate-idea.vercel.app/vision.html";
+        location.href = "/ideas";
         return;
       }
       setWorkspace(it.dataset.workspace);
