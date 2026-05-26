@@ -7598,6 +7598,13 @@ function setupWorkspaceSwitcher() {
   document.querySelectorAll(".sb-switch-item").forEach(it => {
     it.addEventListener("click", e => {
       e.stopPropagation();
+      // 아이디어 검증은 외부 서비스로 새 탭 이동 (워크스페이스 전환 X)
+      if (it.dataset.workspace === "ideas") {
+        window.open("https://evaluate-idea.vercel.app/vision.html", "_blank", "noopener");
+        aside.classList.remove("menu-open");
+        sw.setAttribute("aria-expanded", "false");
+        return;
+      }
       setWorkspace(it.dataset.workspace);
     });
   });
