@@ -29,6 +29,10 @@
     --normal: #4A6BC9;
     --valid: #3F6B43;         /* 짙은 녹색 */
     --no-expiry: #A39A8C;
+    /* 폰트 토큰 — 본문 sans, 타이틀 serif */
+    --serif-ko: "Noto Serif KR", "Nanum Myeongjo", serif;
+    --serif-en: "GFS Didot", "Noto Serif KR", serif;
+    --sans-ko: "Noto Sans KR", "Inter", -apple-system, "맑은 고딕", sans-serif;
   }
   * { box-sizing: border-box; }
   body {
@@ -579,6 +583,56 @@
     text-decoration: none; cursor: pointer;
   }
   .home-card .open-btn:hover { background: #f0f9ff; }
+
+  /* ─── 홈 화면 v2: 2열 레이아웃 + 일정 컴팩트 카드 ─── */
+  .home-cols {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 22px; margin-top: 20px;
+  }
+  @media (max-width: 820px) {
+    .home-cols { grid-template-columns: 1fr; gap: 8px; }
+  }
+  .home-sec-schedule .home-sec-h { margin-bottom: 12px; }
+  /* 일정 카드 그리드 */
+  .home-sched-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+    gap: 10px;
+  }
+  .home-sched-card {
+    display: flex; align-items: stretch; gap: 0;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: #fff; overflow: hidden;
+    transition: border-color 0.12s, box-shadow 0.12s, transform 0.08s;
+    cursor: default;
+  }
+  .home-sched-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 3px 10px rgba(74,107,201,0.12);
+    transform: translateY(-1px);
+  }
+  /* 좌측 컬러 D-day 블록 */
+  .home-sched-card .hsc-dday {
+    flex-shrink: 0; width: 62px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; letter-spacing: -0.5px;
+    color: #fff; padding: 8px 4px;
+  }
+  .home-sched-card .hsc-dday.urgent { background: linear-gradient(135deg, #ef4444, #dc2626); }
+  .home-sched-card .hsc-dday.imm    { background: linear-gradient(135deg, #fb923c, #ea580c); }
+  .home-sched-card .hsc-dday.calm   { background: linear-gradient(135deg, #5b82d8, var(--primary)); }
+  .home-sched-card .hsc-body {
+    flex: 1; min-width: 0; padding: 9px 12px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .home-sched-card .hsc-title {
+    font-weight: 600; font-size: 13px; line-height: 1.35;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .home-sched-card .hsc-sub {
+    font-size: 11px; color: var(--muted); margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
   /* 캘린더 탭 */
   .cal-header {
@@ -1442,7 +1496,7 @@
     background: var(--bg);
   }
 
-  /* 사이드바 */
+  /* ─── 사이드바 v2: 워크스페이스 스위처 + 그룹 라벨 + 하단 계정 ─── */
   .app-sidebar {
     position: fixed; left: 0; top: 0;
     width: 256px; height: 100vh;
@@ -1453,33 +1507,131 @@
     z-index: 50;
     overflow-y: auto;
   }
-  .sb-brand {
+  .sb-top {
+    position: relative;
+    padding-bottom: 14px; margin-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sb-brand-dot {
+    flex-shrink: 0;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text);
+  }
+  /* 워크스페이스 스위처 */
+  .sb-switcher {
     display: flex; align-items: center; gap: 9px;
-    padding: 6px 12px 22px;
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .sb-switcher:hover {
+    background: var(--bg-subtle);
+    border-color: var(--border);
+  }
+  .sb-switcher-name {
     font-family: var(--serif-en);
     font-size: 18px;
     letter-spacing: 0.01em;
     color: var(--text);
-    text-decoration: none;
     line-height: 1.2;
+    flex: 1;
+    text-align: left;
   }
-  .sb-brand-dot {
-    flex-shrink: 0;
+  .sb-switcher-caret {
+    font-size: 11px; color: var(--muted);
+    transition: transform 0.2s;
   }
-  .sb-brand-dot {
-    width: 16px; height: 16px; border-radius: 50%;
-    background: var(--text);
+  .app-sidebar.menu-open .sb-switcher-caret { transform: rotate(180deg); }
+  .app-sidebar.menu-open .sb-switcher {
+    background: var(--bg-subtle);
+    border-color: var(--border);
   }
+  .sb-switch-menu {
+    position: absolute;
+    top: calc(100% - 6px); left: 0; right: 0;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(26,23,20,0.16);
+    padding: 6px;
+    z-index: 60;
+    display: none; flex-direction: column; gap: 2px;
+  }
+  .app-sidebar.menu-open .sb-switch-menu { display: flex; }
+  .sb-switch-item {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    padding: 10px;
+    border-radius: 9px;
+    background: transparent; border: none;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: background 0.12s;
+  }
+  .sb-switch-item:hover { background: var(--bg-subtle); }
+  .sb-switch-item .sw-ic {
+    font-size: 18px; flex-shrink: 0;
+    width: 22px; text-align: center;
+  }
+  .sb-switch-item .sw-text {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column;
+  }
+  .sb-switch-item .sw-title {
+    font-size: 13.5px; font-weight: 700; color: var(--text);
+  }
+  .sb-switch-item .sw-sub {
+    font-size: 11px; color: var(--muted);
+  }
+  .sb-switch-item .sw-check {
+    font-size: 13px; font-weight: 800;
+    color: var(--accent); opacity: 0; flex-shrink: 0;
+  }
+  .app-sidebar[data-workspace="docs"] .sb-switch-item[data-workspace="docs"] .sw-check,
+  .app-sidebar[data-workspace="ideas"] .sb-switch-item[data-workspace="ideas"] .sw-check { opacity: 1; }
+
+  /* 워크스페이스별 nav 토글 */
+  .sb-nav-ideas { display: none; }
+  .app-sidebar[data-workspace="docs"] .sb-nav-docs { display: flex; }
+  .app-sidebar[data-workspace="docs"] .sb-nav-ideas { display: none; }
+  .app-sidebar[data-workspace="ideas"] .sb-nav-docs { display: none; }
+  .app-sidebar[data-workspace="ideas"] .sb-nav-ideas { display: flex; }
+  .sb-nav-comingsoon {
+    color: var(--muted); font-size: 12.5px;
+    text-align: center; padding: 28px 12px;
+    background: var(--bg-subtle); border-radius: 10px;
+    margin-top: 8px; line-height: 1.5;
+  }
+
   .sb-nav {
     flex: 1;
     display: flex; flex-direction: column; gap: 2px;
     margin-top: 4px;
   }
-  /* 사이드바 안의 tab-btn 은 세로 레이아웃으로 재정의 */
+  /* 그룹 라벨 */
+  .sb-group-label {
+    font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: #B5AC9C;
+    padding: 16px 14px 5px;
+    margin-top: 6px;
+  }
+  .sb-group-label:first-of-type { margin-top: 10px; }
+  .sb-ic {
+    display: inline-flex; width: 18px; justify-content: center;
+    margin-right: 9px; font-size: 14px; flex-shrink: 0;
+  }
+  /* 사이드바 안의 tab-btn — 사이드바 전용 재정의 */
   .sb-nav .tab-btn {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center;
     width: 100%;
-    padding: 11px 14px;
+    padding: 10px 14px;
     background: transparent;
     border: none !important;
     border-radius: 8px;
@@ -1515,54 +1667,92 @@
     color: white;
   }
 
+  /* 사이드바 하단 계정 영역 */
   .sb-bottom {
-    padding-top: 14px;
+    padding-top: 12px;
     margin-top: 12px;
     border-top: 1px solid var(--border);
-    display: flex; flex-direction: column; gap: 8px;
+    display: flex; flex-direction: column; gap: 4px;
   }
-  .sb-bottom .ics-link {
-    font-size: 12.5px;
-    padding: 6px 10px;
-    text-align: center;
+  .sb-account-profile {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: transparent; border: none;
+    cursor: pointer; text-align: left;
+    transition: background 0.12s;
   }
-  .sb-ics-label {
+  .sb-account-profile:hover { background: var(--bg-subtle); }
+  .sb-account-profile.active { background: var(--accent-soft); }
+  .sb-account-avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; flex-shrink: 0;
+    overflow: hidden;
+  }
+  .sb-account-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .sb-account-info {
+    min-width: 0; flex: 1;
+    display: flex; flex-direction: column;
+  }
+  .sb-account-name {
+    font-size: 13px; font-weight: 700; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sb-account-profile.active .sb-account-name { color: var(--accent); }
+  .sb-account-sub {
+    font-size: 11px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sb-account-logout {
+    width: 100%;
+    padding: 7px 12px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid var(--border);
     color: var(--muted);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 600;
-    margin: 6px 4px 2px;
+    font-family: inherit;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
   }
+  .sb-account-logout:hover {
+    background: #FBEEE6; color: var(--accent); border-color: #F4D9C8;
+  }
+  .sb-account-login {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 9px;
+    background: #FEE500; color: #1A1714;
+    border: 1px solid #E8D000;
+    font-size: 12.5px; font-weight: 700;
+    cursor: pointer; text-decoration: none;
+  }
+  .sb-account-login:hover { background: #FFD700; }
 
-  /* 콘텐츠 영역 — 사이드바 옆으로 밀기 */
+  /* 콘텐츠 영역 — 사이드바 옆으로 밀기 + 상단 topbar 제거 */
   main {
     margin-left: 256px !important;
     max-width: none !important;
-    padding: 0 0 60px !important;
+    padding: 36px 0 60px !important;
   }
-  /* 상단 슬림바: 로그인/유저 정보를 우측에 정렬 */
-  .content-topbar {
-    display: flex; justify-content: flex-end; align-items: center;
-    padding: 16px 48px;
-    min-height: 56px;
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
-  }
-  .content-topbar #auth-area {
-    display: flex; align-items: center;
-  }
-  /* 상단바의 유저 pill: 깔끔한 카드 스타일 */
-  .content-topbar .auth-user-pill {
-    background: var(--bg-subtle);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 5px 8px 5px 6px;
-  }
+  /* 기존 content-topbar 는 비표시 (legacy) */
+  .content-topbar { display: none; }
   .pane { padding: 0 48px; }
 
-  /* 패널 헤딩에 세리프 */
+  /* 페인 타이틀 (세리프, 큰 사이즈) */
+  .pane-title {
+    font-family: var(--serif-ko);
+    font-weight: 700;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    margin: 0 0 18px;
+    color: var(--text);
+  }
+  /* 패널 안의 h2 도 세리프 (서브 타이틀 톤) */
   .panel h2,
   section.pane > .panel > h2 {
     font-family: var(--serif-ko);
@@ -1576,6 +1766,18 @@
   body > header { display: none; }
   body > nav.tabs { display: none; }
 
+  /* 아이디어 검증 빈 페이지 */
+  .ideas-empty {
+    text-align: center; padding: 64px 24px;
+    background: var(--bg-subtle); border-radius: 12px;
+  }
+  .ideas-empty-icon { font-size: 48px; margin-bottom: 14px; }
+  .ideas-empty h3 {
+    font-family: var(--serif-ko); font-weight: 500;
+    font-size: 20px; margin: 0 0 6px; color: var(--text);
+  }
+  .ideas-empty p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
   /* 반응형 */
   @media (max-width: 880px) {
     .app-sidebar {
@@ -1586,27 +1788,27 @@
       border-right: none;
       border-bottom: 1px solid var(--border);
     }
-    .sb-brand { padding: 0 0 12px; }
+    .sb-top { padding-bottom: 12px; margin-bottom: 8px; }
+    .sb-switcher-name { font-size: 17px; }
     .sb-nav {
       flex-direction: row; flex-wrap: wrap;
       margin-top: 0; gap: 4px;
     }
+    .sb-nav-comingsoon { width: 100%; }
+    .sb-group-label { display: none; }
     .sb-nav .tab-btn {
       width: auto;
       padding: 8px 12px;
     }
+    .sb-ic { margin-right: 6px; }
     .sb-bottom {
       margin-top: 12px;
       border-top: 1px solid var(--border);
       padding-top: 12px;
     }
-    main { margin-left: 0 !important; }
-    .content-topbar {
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      min-height: 48px;
-    }
+    main { margin-left: 0 !important; padding: 20px 0 60px !important; }
     .pane { padding: 0 16px; }
+    .pane-title { font-size: 23px; margin-bottom: 14px; }
   }
 
   /* ─── 기업 프로필 탭 ─── */
@@ -1960,6 +2162,152 @@
   }
   .announcement-card.ineligible:hover {
     opacity: 1;
+  }
+
+  /* ─── 매칭 탭 전용 카드 리뉴얼 (Phase B) — #match-list 스코프 한정 ─── */
+  #announcements-list .announcement-card {
+    display: flex; align-items: stretch; gap: 0;
+    padding: 0; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 12px;
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  #announcements-list .announcement-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 2px 10px rgba(26,23,20,0.06);
+  }
+  #announcements-list .announcement-card.cmp-selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary-soft);
+  }
+  /* 좌측 메인 콘텐츠 영역 */
+  #announcements-list .match-main {
+    flex: 1; min-width: 0;
+    padding: 16px 18px;
+  }
+  #announcements-list .a-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 14px; margin: 0; cursor: pointer;
+  }
+  #announcements-list .a-head-info { min-width: 0; flex: 1; }
+  #announcements-list .a-meta {
+    color: var(--muted); font-size: 12px; margin-top: 5px;
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  }
+  #announcements-list .match-dday {
+    display: inline-block; padding: 1px 8px;
+    border-radius: 999px; font-size: 11px; font-weight: 700;
+    background: var(--bg-accent); color: var(--muted);
+  }
+  #announcements-list .match-dday.urgent { background: #FEE2E2; color: #B8401E; }
+  #announcements-list .match-dday.normal { background: var(--primary-soft); color: var(--primary); }
+  #announcements-list .a-actions {
+    display: flex; flex-direction: column; align-items: flex-end;
+    gap: 8px; flex-shrink: 0;
+  }
+  /* 3단계 서류 상태 pill */
+  .doc-status-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .doc-status-pill .dsp-icon { font-size: 12px; }
+  .doc-status-pill.ds-complete { background: #E3F5E8; color: #1E7A3D; border-color: #BBE6C8; }
+  .doc-status-pill.ds-risk     { background: #FFF1DC; color: #B45309; border-color: #FAD89E; }
+  .doc-status-pill.ds-short    { background: #FCE6E2; color: #C0341B; border-color: #F4C4BA; }
+  /* 상세 토글 버튼 */
+  .match-toggle {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px; border-radius: 8px;
+    background: var(--bg-subtle); border: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .match-toggle:hover {
+    background: var(--primary-soft); border-color: var(--primary);
+    color: var(--primary);
+  }
+  .match-toggle .mt-caret { font-size: 10px; transition: transform 0.2s; }
+  .match-toggle .mt-text::after { content: "상세보기"; }
+  #announcements-list .announcement-card.expanded .match-toggle .mt-text::after { content: "접기"; }
+  #announcements-list .announcement-card.expanded .match-toggle {
+    background: var(--primary); border-color: var(--primary); color: #fff;
+  }
+  #announcements-list .announcement-card.expanded .match-toggle .mt-caret { transform: rotate(180deg); }
+  #announcements-list .match-detail {
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px dashed var(--border);
+    display: none;
+  }
+  #announcements-list .announcement-card.expanded .match-detail { display: block; }
+  /* 📎 PDF 작은 버튼 */
+  #announcements-list .attach-btn {
+    padding: 5px 11px; border-radius: 8px;
+    background: var(--bg-subtle); border: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+  #announcements-list .attach-btn:hover {
+    background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  }
+
+  /* 우측 비교 zone (쿠폰 절취선 스타일) */
+  #announcements-list .match-cmp-zone {
+    flex-shrink: 0; width: 78px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px;
+    padding: 12px 8px;
+    background: var(--bg-subtle);
+    border-left: 2px dashed var(--border-strong);
+    cursor: pointer;
+    transition: background 0.12s;
+    position: relative;
+  }
+  /* 절취 도트 (상하 끝 천공 효과) */
+  #announcements-list .match-cmp-zone::before,
+  #announcements-list .match-cmp-zone::after {
+    content: ""; position: absolute; left: -7px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--bg); border: 1px solid var(--border);
+  }
+  #announcements-list .match-cmp-zone::before { top: -7px; }
+  #announcements-list .match-cmp-zone::after  { bottom: -7px; }
+  #announcements-list .match-cmp-zone:hover { background: var(--primary-soft); }
+  #announcements-list .match-cmp-zone.on {
+    background: var(--primary-soft); border-left-color: var(--primary);
+  }
+  /* 숨긴 실제 checkbox (기능 보존) */
+  #announcements-list .match-cmp-zone input {
+    position: absolute; opacity: 0; pointer-events: none;
+  }
+  #announcements-list .mcz-box {
+    width: 26px; height: 26px; border-radius: 7px;
+    border: 2px solid var(--border-strong); background: #fff;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.12s;
+  }
+  #announcements-list .mcz-check {
+    color: #fff; font-size: 15px; font-weight: 800;
+    opacity: 0; transition: opacity 0.1s;
+  }
+  #announcements-list .match-cmp-zone.on .mcz-box {
+    background: var(--primary); border-color: var(--primary);
+  }
+  #announcements-list .match-cmp-zone.on .mcz-check { opacity: 1; }
+  #announcements-list .mcz-label {
+    font-size: 11.5px; font-weight: 700; color: var(--muted);
+  }
+  #announcements-list .match-cmp-zone.on .mcz-label { color: var(--primary); }
+  @media (max-width: 620px) {
+    #announcements-list .announcement-card { flex-direction: column; }
+    #announcements-list .match-cmp-zone {
+      width: 100%; flex-direction: row; padding: 10px 14px;
+      border-left: none; border-top: 2px dashed var(--border-strong);
+    }
+    #announcements-list .match-cmp-zone::before { top: -7px; left: 50%; transform: translateX(-50%); }
+    #announcements-list .match-cmp-zone::after  { bottom: auto; top: -7px; right: -7px; left: auto; }
   }
 
   /* ─── 공고 유형 필터 칩 ─── */
@@ -2513,53 +2861,120 @@
 </head>
 <body>
 
-<aside class="app-sidebar">
-  <a href="/" class="sb-brand">
-    <span class="sb-brand-dot"></span>
-    Startup Assistance
-  </a>
-  <nav class="sb-nav">
-    <button class="tab-btn active" data-tab="home">🏠 홈<span class="count" id="cnt-home">·</span></button>
-    <button class="tab-btn" data-tab="my-docs">📁 내 서류<span class="count" id="cnt-my-docs">0</span></button>
-    <button class="tab-btn" data-tab="browse">🔍 공고 둘러보기<span class="count" id="cnt-browse">·</span></button>
-    <button class="tab-btn" data-tab="match">🎯 공고 매칭<span class="count" id="cnt-match">·</span></button>
-    <button class="tab-btn" data-tab="analyze">📊 공고 분석<span class="count" id="cnt-attach">0</span></button>
-    <button class="tab-btn" data-tab="calendar">📅 캘린더<span class="count" id="cnt-cal">0</span></button>
-    <button class="tab-btn" data-tab="profile">🏢 기업 프로필</button>
+<aside class="app-sidebar" data-workspace="docs">
+  <div class="sb-top">
+    <button class="sb-switcher" id="sb-switcher" aria-haspopup="true" aria-expanded="false">
+      <span class="sb-brand-dot"></span>
+      <span class="sb-switcher-name" id="sb-switcher-name">서류 체커</span>
+      <span class="sb-switcher-caret">▽</span>
+    </button>
+    <div class="sb-switch-menu" id="sb-switch-menu">
+      <button class="sb-switch-item" data-workspace="docs">
+        <span class="sw-ic">📋</span>
+        <span class="sw-text">
+          <span class="sw-title">서류 체커</span>
+          <span class="sw-sub">공고·서류 관리</span>
+        </span>
+        <span class="sw-check">✓</span>
+      </button>
+      <button class="sb-switch-item" data-workspace="ideas">
+        <span class="sw-ic">💡</span>
+        <span class="sw-text">
+          <span class="sw-title">아이디어 검증</span>
+          <span class="sw-sub">준비 중</span>
+        </span>
+        <span class="sw-check">✓</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 서류 체커 모드 탭 -->
+  <nav class="sb-nav sb-nav-docs">
+    <button class="tab-btn active" data-tab="home"><span class="sb-ic">🏠</span>홈<span class="count" id="cnt-home">·</span></button>
+
+    <div class="sb-group-label">탐색</div>
+    <button class="tab-btn" data-tab="browse"><span class="sb-ic">🔍</span>공고 둘러보기<span class="count" id="cnt-browse">·</span></button>
+    <button class="tab-btn" data-tab="match"><span class="sb-ic">🎯</span>공고 매칭<span class="count" id="cnt-match">·</span></button>
+    <button class="tab-btn" data-tab="analyze"><span class="sb-ic">📊</span>공고 분석<span class="count" id="cnt-attach">0</span></button>
+
+    <div class="sb-group-label">마이페이지</div>
+    <button class="tab-btn" data-tab="my-docs"><span class="sb-ic">📁</span>내 서류<span class="count" id="cnt-my-docs">0</span></button>
+    <button class="tab-btn" data-tab="calendar"><span class="sb-ic">📅</span>캘린더<span class="count" id="cnt-cal">0</span></button>
   </nav>
+
+  <!-- 아이디어 검증 모드 탭 (준비 중) -->
+  <nav class="sb-nav sb-nav-ideas">
+    <div class="sb-nav-comingsoon">곧 제공될 예정입니다</div>
+  </nav>
+
+  <div class="sb-bottom" id="sb-account"></div>
 </aside>
 
 <main>
-  <div class="content-topbar">
+  <div class="content-topbar" style="display:none">
     <div id="auth-area"></div>
   </div>
+
+  <!-- 아이디어 검증 워크스페이스 (빈 페인) -->
+  <section class="pane" id="pane-ideas">
+    <div class="panel">
+      <h2 class="pane-title">아이디어 검증</h2>
+      <div class="ideas-empty">
+        <div class="ideas-empty-icon">💡</div>
+        <h3>아이디어 검증 기능 준비 중</h3>
+        <p>이 영역은 곧 제공될 예정입니다.</p>
+      </div>
+    </div>
+  </section>
 
   <!-- 탭 0: 홈 (대시보드) -->
   <section class="pane active" id="pane-home">
     <div class="panel">
-      <h2 style="margin-top:0">🏠 오늘 한눈에 보는 할 일</h2>
+      <h2 class="pane-title">🏠 오늘 한눈에 보는 할 일</h2>
       <p style="margin-top:0; color:var(--muted); font-size:12px;">
         만료된 서류 · 곧 만료될 서류 · 다가오는 공고 마감 · 다가오는 일정을 한 화면에 모아 보여줍니다.
       </p>
 
-      <div class="home-sec" id="home-expired">
-        <div class="home-sec-h"><span class="home-pill exp">🔴 만료된 서류</span> <span class="home-sub" id="home-expired-count">—</span></div>
-        <div class="home-body" id="home-expired-body"><div class="empty">불러오는 중...</div></div>
-      </div>
-
-      <div class="home-sec" id="home-soon">
-        <div class="home-sec-h"><span class="home-pill soon">🟠 곧 만료 (D-30 이내)</span> <span class="home-sub" id="home-soon-count">—</span></div>
-        <div class="home-body" id="home-soon-body"><div class="empty">불러오는 중...</div></div>
-      </div>
-
-      <div class="home-sec" id="home-ann">
-        <div class="home-sec-h"><span class="home-pill ann">🔵 다가오는 공고 마감 (D-30 이내)</span> <span class="home-sub" id="home-ann-count">—</span></div>
-        <div class="home-body" id="home-ann-body"><div class="empty">불러오는 중...</div></div>
-      </div>
-
-      <div class="home-sec" id="home-events">
-        <div class="home-sec-h"><span class="home-pill evt">📅 다가오는 공고 일정 (D-14 이내)</span> <span class="home-sub" id="home-events-count">—</span></div>
+      <!-- 1. 다가오는 일정 (상단, 카드 그리드) -->
+      <div class="home-sec home-sec-schedule" id="home-events">
+        <div class="home-sec-h">
+          <span class="home-pill evt">📅 다가오는 공고 일정</span>
+          <span class="home-sub" id="home-events-count">—</span>
+        </div>
         <div class="home-body" id="home-events-body"><div class="empty">불러오는 중...</div></div>
+      </div>
+
+      <!-- 2. 하단 2열: 좌=서류 만료(만료된 + 곧 만료) / 우=다가오는 공고 마감 -->
+      <div class="home-cols">
+        <!-- 좌측 컬럼: 서류 만료 (만료된 + 곧 만료를 하나로 묶음) -->
+        <div>
+          <div class="home-sec" id="home-expired">
+            <div class="home-sec-h">
+              <span class="home-pill exp">🔴 만료된 서류</span>
+              <span class="home-sub" id="home-expired-count">—</span>
+            </div>
+            <div class="home-body" id="home-expired-body"><div class="empty">불러오는 중...</div></div>
+          </div>
+
+          <div class="home-sec" id="home-soon">
+            <div class="home-sec-h">
+              <span class="home-pill soon">🟠 곧 만료 (D-30 이내)</span>
+              <span class="home-sub" id="home-soon-count">—</span>
+            </div>
+            <div class="home-body" id="home-soon-body"><div class="empty">불러오는 중...</div></div>
+          </div>
+        </div>
+
+        <!-- 우측 컬럼: 다가오는 공고 마감 -->
+        <div>
+          <div class="home-sec" id="home-ann">
+            <div class="home-sec-h">
+              <span class="home-pill ann">🔵 다가오는 공고 마감 (D-30 이내)</span>
+              <span class="home-sub" id="home-ann-count">—</span>
+            </div>
+            <div class="home-body" id="home-ann-body"><div class="empty">불러오는 중...</div></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -2567,9 +2982,9 @@
   <!-- 탭 1: 내 서류 -->
   <section class="pane" id="pane-my-docs">
     <div class="panel">
-      <h2>내가 보유한 서류</h2>
-      <p style="margin-top:0; color:var(--muted); font-size:12px;">
-        저장된 서류는 <b>본인 브라우저의 localStorage</b>에만 보관됩니다. 다른 기기/브라우저에서는 보이지 않으며 서버로 전송되지 않습니다.
+      <h2 class="pane-title">📁 내 보유 서류</h2>
+      <p style="margin-top:-8px; color:var(--muted); font-size:12.5px;">
+        발급일을 입력하면 만료일·재발급 시점을 자동 계산합니다. 로그인 시 DB로 사용자별 격리.
       </p>
 
       <div style="display:flex; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap;">
@@ -2634,7 +3049,7 @@
   <!-- 탭 1.5: 공고 둘러보기 (DocsHunt 스타일) -->
   <section class="pane" id="pane-browse">
     <div class="panel">
-      <h2 style="margin-top:0">🔍 공고 둘러보기</h2>
+      <h2 class="pane-title">🔍 공고 둘러보기</h2>
       <p style="margin-top:0; color:var(--muted); font-size:12px;">
         K-Startup·NRF 등에서 수집한 진행 중 공고를 한 화면에서 검색·정렬·즐겨찾기할 수 있습니다.
         정확한 자격은 원문 공고문을 꼭 확인하세요.
@@ -2651,6 +3066,9 @@
           <button class="br-sort-btn" data-sort="fav" onclick="setBrowseSort('fav')">관심</button>
         </div>
       </div>
+
+      <!-- 유형 필터 칩 (매칭과 동일한 6묶음, 둘러보기 전용 상태) -->
+      <div id="browse-type-filter" class="type-filter-bar"></div>
 
       <div class="br-meta-row">
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -2683,7 +3101,7 @@
   <!-- 탭 2: 공고 매칭 -->
   <section class="pane" id="pane-match">
     <div class="panel">
-      <h2>맞춤 공고 추천</h2>
+      <h2 class="pane-title">🎯 맞춤 공고 추천</h2>
       <p style="margin-top:0; color:var(--muted); font-size:12px;">
         <b>기업 프로필</b>(업력·지역·사업자 유형) + <b>보유 서류</b>를 기반으로 K-Startup·IRIS 공고를 추천순으로 정렬합니다.
         IRIS 공고는 자격 메타가 없어 자격 매칭 없이 통과 처리되어 노출됩니다.
@@ -2708,7 +3126,7 @@
   <!-- 탭 3: 공고 분석 (PDF 업로드 + LLM 추출) -->
   <section class="pane" id="pane-analyze">
     <div class="panel">
-      <h2>공고 PDF 분석 (베타)</h2>
+      <h2 class="pane-title">📊 공고 PDF 분석</h2>
       <p style="margin-top:0; color:var(--muted); font-size:12px;">
         공고문 PDF를 업로드하면 <b>신청 자격 조건</b>과 <b>유의사항</b>을 자동으로 추출합니다.
         업로드한 PDF는 본인의 로컬 서버(<code>planner/storage/</code>)에만 저장되며, 분석 결과는 같은 파일을 다시 올리면 캐시에서 즉시 응답합니다.
@@ -2748,7 +3166,7 @@
   <section class="pane" id="pane-calendar">
     <div class="panel">
       <div class="cal-header">
-        <h2 style="margin:0">📅 일정 캘린더</h2>
+        <h2 class="pane-title" style="margin:0">📅 일정 캘린더</h2>
         <div class="cal-nav">
           <button onclick="calPrev()">◀</button>
           <button onclick="calToday()">오늘</button>
@@ -2932,6 +3350,9 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.querySelectorAll(".pane").forEach(p => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`pane-${btn.dataset.tab}`).classList.add("active");
+    // 사이드바 하단 프로필 카드 active 토글 (프로필 탭일 때만)
+    const accBtn = document.getElementById("sb-acc-profile");
+    if (accBtn) accBtn.classList.toggle("active", btn.dataset.tab === "profile");
     if (btn.dataset.tab === "home") renderHome();
     if (btn.dataset.tab === "browse" && !browseCache.length) loadBrowseAnnouncements();
     if (btn.dataset.tab === "match" && !announcementsCache.length) loadAnnouncements();
@@ -3379,11 +3800,56 @@ async function loadBrowseAnnouncements() {
     browseCache = data.announcements || [];
     browsePage = 1;
     document.getElementById("cnt-browse").textContent = browseCache.length;
+    _renderBrowseTypeFilter();
     renderBrowse();
   } catch (e) {
     status.textContent = "로드 실패: " + e.message;
     tbody.innerHTML = `<tr><td colspan="5" class="br-empty">로드 실패: ${escapeHtml(e.message)}</td></tr>`;
   }
+}
+
+// 둘러보기 전용 유형 필터 상태 (매칭과 독립)
+const _browseActiveTypes = new Set();
+
+function _renderBrowseTypeFilter() {
+  const bar = document.getElementById("browse-type-filter");
+  if (!bar) return;
+  const counts = {};
+  (browseCache || []).forEach(a => {
+    const code = a.type?.code || "other";
+    counts[code] = (counts[code] || 0) + 1;
+  });
+  const visibleTypes = (typeof TYPE_ORDER !== "undefined" ? TYPE_ORDER : Object.keys(counts))
+    .filter(c => (counts[c] || 0) > 0);
+  if (!visibleTypes.length) { bar.innerHTML = ""; return; }
+  const chips = visibleTypes.map(code => {
+    const a = (browseCache || []).find(x => x.type?.code === code);
+    const emoji = a?.type?.emoji || "📌";
+    const label = a?.type?.label || code;
+    const active = _browseActiveTypes.has(code);
+    return `<span class="type-chip ${active ? 'active' : ''}" onclick="_toggleBrowseType('${code}')" title="${escapeHtml(label)}">
+      ${emoji} ${escapeHtml(label)} <span class="tc-count">${counts[code]}</span>
+    </span>`;
+  }).join("");
+  const resetBtn = _browseActiveTypes.size > 0
+    ? `<span class="type-chip tfb-reset" onclick="_resetBrowseType()">× 필터 해제</span>`
+    : `<span style="margin-left:auto; font-size:11px; color:var(--muted)">유형을 클릭해 필터링</span>`;
+  bar.innerHTML = `<span class="tfb-label">📂 유형:</span>${chips}${resetBtn}`;
+}
+
+function _toggleBrowseType(code) {
+  if (_browseActiveTypes.has(code)) _browseActiveTypes.delete(code);
+  else _browseActiveTypes.add(code);
+  _renderBrowseTypeFilter();
+  browsePage = 1;
+  renderBrowse();
+}
+
+function _resetBrowseType() {
+  _browseActiveTypes.clear();
+  _renderBrowseTypeFilter();
+  browsePage = 1;
+  renderBrowse();
 }
 
 function onBrowseSearchInput() {
@@ -3472,6 +3938,10 @@ function _filterAndSortBrowse() {
     const profile = (currentProfile && currentProfile.completed) ? currentProfile : null;
     if (profile) arr = arr.filter(a => _eligibleByProfile(a, profile));
   }
+  // 유형 필터 (선택된 유형만 표시 — 선택 없으면 전체)
+  if (_browseActiveTypes.size > 0) {
+    arr = arr.filter(a => _browseActiveTypes.has(a.type?.code || "other"));
+  }
   if (browseSort === "fav") {
     arr = arr.filter(a => favs.has(a.id));
     arr.sort((x, y) => (x.end_date || "").localeCompare(y.end_date || ""));
@@ -3515,12 +3985,15 @@ function renderBrowse() {
     const ddCls = _ddayClass(dnum);
     const ddText = a.d_day || (a.end_date ? `~${a.end_date.slice(5, 10)}` : "—");
     const url = a.detail_url || "";
+    const t = a.type || { code: "other", emoji: "📌", label: "기타" };
+    const typeBadge = `<span class="type-badge t-${t.code}" title="${escapeHtml(t.label)}">${t.emoji} ${escapeHtml(t.label)}</span>`;
     return `<tr>
       <td class="br-c-fav">
         <button class="br-fav-btn ${isFav ? 'active' : ''}" title="${isFav ? '관심 해제' : '관심 등록'}"
                 onclick="toggleBrowseFav(${a.id})">${isFav ? '★' : '☆'}</button>
       </td>
       <td class="br-c-title">
+        ${typeBadge}
         ${url
           ? `<a class="br-title-link" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(a.title || '')}">${escapeHtml(a.title || '')}</a>`
           : `<span class="br-title-link" title="${escapeHtml(a.title || '')}">${escapeHtml(a.title || '')}</span>`}
@@ -3719,9 +4192,18 @@ async function renderAnnouncements() {
       </div>`;
     }
     const sum = match.summary;
-    const fulfillLabel = { complete: "전부 충족", partial: "부분 충족", none: "미충족" }[match.fulfillment];
     const pf = match.profile_fit || { eligible: true, score: 100, reasons: [] };
     const cardCls = pf.eligible === false ? "announcement-card ineligible" : "announcement-card";
+
+    // 3단계 서류 상태: missing > 0 → 부족, expired/expiring > 0 → 위험, 그 외 → 완비
+    let docStatus;
+    if (sum.missing > 0 || match.fulfillment === "none") {
+      docStatus = { key: "short", label: "서류 부족", icon: "✗" };
+    } else if (sum.expired > 0 || sum.expiring > 0) {
+      docStatus = { key: "risk", label: "만료 위험", icon: "⚠" };
+    } else {
+      docStatus = { key: "complete", label: "서류 완비", icon: "✓" };
+    }
 
     // 추천 이유 칩 (자격) + 서류 충족 칩
     const profChips = (pf.reasons || []).map(r =>
@@ -3737,37 +4219,49 @@ async function renderAnnouncements() {
 
     const isSel = compareSelection.has(idx);
     const cardClsFinal = isSel ? `${cardCls} cmp-selected` : cardCls;
+    // D-day 텍스트 → 등급 클래스
+    const ddText = a.d_day || "";
+    let ddCls = "";
+    const ddMatch = ddText.match(/D-(\d+)/);
+    if (ddMatch) {
+      const n = parseInt(ddMatch[1], 10);
+      ddCls = n <= 7 ? "urgent" : "normal";
+    } else if (/D-?DAY|D-0/i.test(ddText)) {
+      ddCls = "urgent";
+    }
     return `
       <div class="${cardClsFinal}" id="ann-${idx}">
-        <div class="a-head">
-          <div style="flex:1; min-width:0">
-            <div class="a-title">${titleHtml}</div>
-            <div class="a-meta">
-              ${escapeHtml(a.source_name || a.source_code || "")} ·
-              ${escapeHtml(a.department || "")} ·
-              마감 <b>${escapeHtml((a.end_date || "").slice(0,10))}</b> ${a.d_day ? "(" + escapeHtml(a.d_day) + ")" : ""}
+        <div class="match-main">
+          <div class="a-head" onclick="_matchHeadClick(event, ${idx})">
+            <div class="a-head-info">
+              <div class="a-title">${titleHtml}</div>
+              <div class="a-meta">
+                ${escapeHtml(a.source_name || a.source_code || "")} ·
+                ${escapeHtml(a.department || "")} ·
+                마감 <b>${escapeHtml((a.end_date || "").slice(0,10))}</b>
+                ${ddText ? `<span class="match-dday ${ddCls}">${escapeHtml(ddText)}</span>` : ""}
+              </div>
+              ${(profChips || docChip) ? `
+                <div class="fit-chips">
+                  ${pf.eligible === false ? '<span class="fit-chip warn">⚠️ 자격 불일치</span>' : '<span class="fit-chip recommend">✨ 추천</span>'}
+                  ${profChips}
+                  ${docChip}
+                </div>` : ""}
             </div>
-            ${(profChips || docChip) ? `
-              <div class="fit-chips">
-                ${pf.eligible === false ? '<span class="fit-chip warn">⚠️ 자격 불일치</span>' : '<span class="fit-chip recommend">✨ 추천</span>'}
-                ${profChips}
-                ${docChip}
-              </div>` : ""}
+            <div class="a-actions">
+              <span class="doc-status-pill ds-${docStatus.key}" title="보유 ${sum.fulfilled} · 임박 ${sum.expiring} · 만료 ${sum.expired} · 미보유 ${sum.missing}">
+                <span class="dsp-icon">${docStatus.icon}</span>${escapeHtml(docStatus.label)}
+              </span>
+              <button class="attach-btn" onclick="event.stopPropagation(); openAttachPdf(${idx})" title="이 공고의 PDF를 첨부하면 정밀 비교에 사용됩니다">📎 PDF</button>
+              <button class="match-toggle" onclick="event.stopPropagation(); toggleMatchDetail(${idx})" aria-label="상세보기">
+                <span class="mt-text"></span><span class="mt-caret">▾</span>
+              </button>
+            </div>
           </div>
-          <div class="a-actions">
-            <label class="cmp-check" title="비교 선택">
-              <input type="checkbox" ${isSel ? 'checked' : ''} onchange="toggleCompareSelect(${idx})">
-              비교
-            </label>
-            <button class="add attach-btn" onclick="openAttachPdf(${idx})" title="이 공고의 PDF를 첨부하면 정밀 비교에 사용됩니다">📎 PDF</button>
-            <span class="fulfillment-pill ${match.fulfillment}">${fulfillLabel}</span>
-            <button class="add" onclick="toggleMatchDetail(${idx})">상세</button>
+          <div class="a-meta" style="margin-top:8px; font-size:11.5px;">
+            충족 <b>${sum.fulfilled}</b> · 만료 <b>${sum.expired}</b> · 임박 <b>${sum.expiring}</b> · 미보유 <b>${sum.missing}</b> · 발급 태스크 <b>${match.tasks.length}</b>
           </div>
-        </div>
-        <div class="a-meta">
-          충족 <b>${sum.fulfilled}</b> · 만료 <b>${sum.expired}</b> · 임박 <b>${sum.expiring}</b> · 미보유 <b>${sum.missing}</b> · 발급 태스크 <b>${match.tasks.length}</b>
-        </div>
-        <div class="match-detail" id="detail-${idx}">
+          <div class="match-detail" id="detail-${idx}">
           ${(match.notes || []).map(n =>
             `<div class="notes-box"><span class="nt-label">참고:</span>${escapeHtml(n)}</div>`).join("")}
 
@@ -3801,12 +4295,24 @@ async function renderAnnouncements() {
             <a class="ics-link" href="${escapeHtml(a.detail_url || "#")}" target="_blank" rel="noopener">원문 공고 보기</a>
           </div>
         </div>
+        </div><!-- /.match-main -->
+        <label class="match-cmp-zone ${isSel ? 'on' : ''}" title="비교 선택" onclick="event.stopPropagation()">
+          <input type="checkbox" ${isSel ? 'checked' : ''} onchange="toggleCompareSelect(${idx}); this.closest('.match-cmp-zone').classList.toggle('on', this.checked); this.closest('.announcement-card').classList.toggle('cmp-selected', this.checked);">
+          <span class="mcz-box"><span class="mcz-check">✓</span></span>
+          <span class="mcz-label">비교</span>
+        </label>
       </div>
     `;
   }).join("");
 
   // 상세 데이터를 idx 키로 보관해 ics 다운로드 시 사용
   window._matchResults = results;
+}
+
+// 카드 헤더 클릭 → 상세 토글 (단, 버튼/링크/체크박스 영역은 제외)
+function _matchHeadClick(e, idx) {
+  if (e.target.closest("a, button, input, label, .match-cmp-zone")) return;
+  toggleMatchDetail(idx);
 }
 
 function toggleMatchDetail(idx) {
@@ -6117,24 +6623,29 @@ async function renderHomeEvents() {
       cnt.textContent = "0건";
       return;
     }
-    body.innerHTML = upcoming.map(ev => {
+    body.innerHTML = `<div class="home-sched-grid">` + upcoming.map(ev => {
       const dateText = ev.date_end && ev.date_end !== ev.date_start
-        ? `${ev.date_start} ~ ${ev.date_end}` : ev.date_start;
+        ? `${ev.date_start.slice(5)} ~ ${ev.date_end.slice(5)}` : ev.date_start.slice(5);
       const typeLabel = SCHEDULE_TYPE_LABEL[ev.type] || ev.type;
       const ds = new Date(ev.date_start);
       const diff = Math.floor((ds - today) / 86400000);
-      const dday = diff < 0 ? "진행중" : (diff === 0 ? "오늘" : `D-${diff}`);
-      const ddayCls = diff <= 0 ? "imm" : "";
+      let ddayText, ddayCls;
+      if (diff < 0)      { ddayText = "진행중"; ddayCls = "urgent"; }
+      else if (diff === 0) { ddayText = "오늘";   ddayCls = "urgent"; }
+      else if (diff <= 3) { ddayText = `D-${diff}`; ddayCls = "urgent"; }
+      else if (diff <= 7) { ddayText = `D-${diff}`; ddayCls = "imm"; }
+      else                 { ddayText = `D-${diff}`; ddayCls = "calm"; }
+      const subText = `${ev.folder_name || ""} · ${typeLabel} · ${dateText}${ev.time ? " " + ev.time : ""}`;
       return `
-        <div class="home-card">
-          <div class="hc-left">
-            <div class="hc-title"><span class="dday ${ddayCls}">${escapeHtml(dday)}</span> ${escapeHtml(ev.title)}</div>
-            <div class="hc-sub">[${escapeHtml(ev.folder_name || "")}] ${escapeHtml(typeLabel)} · ${escapeHtml(dateText)}${ev.time ? " " + escapeHtml(ev.time) : ""}</div>
+        <div class="home-sched-card" title="${escapeHtml(ev.title)}\n${escapeHtml(subText)}">
+          <div class="hsc-dday ${ddayCls}">${escapeHtml(ddayText)}</div>
+          <div class="hsc-body">
+            <div class="hsc-title">${escapeHtml(ev.title)}</div>
+            <div class="hsc-sub">${escapeHtml(subText)}</div>
           </div>
-          <div class="hc-actions"></div>
         </div>
       `;
-    }).join("");
+    }).join("") + `</div>`;
     cnt.textContent = `${upcoming.length}건`;
   } catch (e) {
     body.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
@@ -7008,13 +7519,14 @@ async function loadCurrentUser() {
 }
 
 function renderAuthArea() {
-  const wrap = document.getElementById("auth-area");
+  // 사이드바 하단 계정 영역 (#sb-account) 에 렌더
+  const wrap = document.getElementById("sb-account");
   if (!wrap) return;
   if (!CURRENT_USER) {
     wrap.innerHTML = `
-      <a class="auth-login-btn" href="/api/auth/kakao/login">💬 카카오</a>
-      <a class="auth-login-btn" href="/api/auth/google/login" style="background:white;color:#1F1F1F;border:1px solid #DADCE0;margin-left:6px">G Google</a>
-      <a class="auth-login-btn" href="/api/auth/naver/login" style="background:#03C75A;color:white;margin-left:6px"><b>N</b> 네이버</a>
+      <a class="sb-account-login" href="/api/auth/kakao/login" title="카카오로 시작">💬 카카오 로그인</a>
+      <a class="sb-account-login" href="/api/auth/google/login" style="background:white;color:#1F1F1F;border:1px solid #DADCE0;margin-top:6px">G Google 로그인</a>
+      <a class="sb-account-login" href="/api/auth/naver/login" style="background:#03C75A;color:white;margin-top:6px"><b>N</b> 네이버 로그인</a>
     `;
     return;
   }
@@ -7022,15 +7534,86 @@ function renderAuthArea() {
   const initial = (u.nickname || u.email || "?").slice(0, 1).toUpperCase();
   const avatar = u.profile_img
     ? `<img src="${escapeHtml(u.profile_img)}" alt="profile">`
-    : `<span class="auth-default-avatar">${escapeHtml(initial)}</span>`;
+    : escapeHtml(initial);
+  const company = (CURRENT_PROFILE && CURRENT_PROFILE.company_name) || u.email || "기업 프로필";
   wrap.innerHTML = `
-    <span class="auth-user-pill">
-      ${avatar}
-      <span>${escapeHtml(u.nickname || u.email || "사용자")}</span>
-      <button class="auth-edit-btn" onclick="openOnboarding()" title="기업 정보 수정">내 정보</button>
-      <button class="auth-logout-btn" onclick="logout()">로그아웃</button>
-    </span>
+    <button class="sb-account-profile" id="sb-acc-profile" title="기업 프로필 보기">
+      <span class="sb-account-avatar">${avatar}</span>
+      <span class="sb-account-info">
+        <span class="sb-account-name">${escapeHtml(u.nickname || u.email || "사용자")}</span>
+        <span class="sb-account-sub">${escapeHtml(company)}</span>
+      </span>
+    </button>
+    <button class="sb-account-logout" onclick="logout()">로그아웃</button>
   `;
+  // 프로필 영역 클릭 → 프로필 페인 직접 활성화 (사이드바에 profile 탭이 없으므로)
+  const pb = document.getElementById("sb-acc-profile");
+  if (pb) pb.onclick = () => {
+    const aside = document.querySelector(".app-sidebar");
+    if (aside && aside.dataset.workspace !== "docs") setWorkspace("docs");
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".pane").forEach(p => p.classList.remove("active"));
+    const pane = document.getElementById("pane-profile");
+    if (pane) pane.classList.add("active");
+    pb.classList.add("active");
+    if (typeof renderProfilePanel === "function") renderProfilePanel();
+    if (typeof updateCompareBar === "function") updateCompareBar();
+    // 모바일에서 사이드바가 상단 가로바일 때 본문으로 스크롤
+    if (window.innerWidth <= 880 && pane) pane.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+}
+
+// ─── 워크스페이스 스위처 (서류 체커 / 아이디어 검증) ───────────────────────
+const WORKSPACE_NAMES = { docs: "서류 체커", ideas: "아이디어 검증" };
+function setWorkspace(ws) {
+  const aside = document.querySelector(".app-sidebar");
+  if (!aside) return;
+  aside.dataset.workspace = ws;
+  aside.classList.remove("menu-open");
+  const sw = document.getElementById("sb-switcher");
+  if (sw) sw.setAttribute("aria-expanded", "false");
+  const nm = document.getElementById("sb-switcher-name");
+  if (nm) nm.textContent = WORKSPACE_NAMES[ws] || ws;
+  // 모드별 첫 탭 자동 선택
+  document.querySelectorAll(".pane").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  if (ws === "ideas") {
+    const pane = document.getElementById("pane-ideas");
+    if (pane) pane.classList.add("active");
+  } else {
+    const btn = document.querySelector('.sb-nav-docs [data-tab="home"]');
+    if (btn) btn.click();
+  }
+}
+
+function setupWorkspaceSwitcher() {
+  const aside = document.querySelector(".app-sidebar");
+  const sw = document.getElementById("sb-switcher");
+  if (!sw) return;
+  sw.addEventListener("click", e => {
+    e.stopPropagation();
+    const open = aside.classList.toggle("menu-open");
+    sw.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  document.querySelectorAll(".sb-switch-item").forEach(it => {
+    it.addEventListener("click", e => {
+      e.stopPropagation();
+      setWorkspace(it.dataset.workspace);
+    });
+  });
+  // 바깥 클릭 시 메뉴 닫기
+  document.addEventListener("click", e => {
+    if (!e.target.closest(".sb-top")) {
+      aside.classList.remove("menu-open");
+      sw.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+// DOM 준비 후 1회 셋업
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", setupWorkspaceSwitcher);
+} else {
+  setupWorkspaceSwitcher();
 }
 
 async function logout() {
@@ -7242,8 +7825,8 @@ async function renderProfilePanel() {
   const selectedAreas = new Set(selectedAreasRaw);
 
   body.innerHTML = `
-    <div class="profile-section-h">기업개요</div>
-
+    <!-- ─── 섹션 1: 기본 정보 ─── -->
+    <div class="profile-section-h">기본 정보</div>
     <div class="pf-grid">
       <div class="pf-row">
         <div class="pf-label">기업명</div>
@@ -7251,40 +7834,40 @@ async function renderProfilePanel() {
           value="${escapeHtml(p.company_name || "")}" placeholder="-"></div>
       </div>
       <div class="pf-row">
-        <div class="pf-label">영문기업명</div>
+        <div class="pf-label">영문명</div>
         <div class="pf-value"><input type="text" id="pf-english-name"
           value="${escapeHtml(p.english_name || "")}" placeholder="-"></div>
       </div>
 
       <div class="pf-row">
-        <div class="pf-label">사업자번호</div>
+        <div class="pf-label">사업자등록번호</div>
         <div class="pf-value"><input type="text" id="pf-business-number"
           value="${escapeHtml(p.business_number || "")}" placeholder="-"></div>
       </div>
-      <div class="pf-row">
-        <div class="pf-label">법인등록번호</div>
-        <div class="pf-value"><input type="text" id="pf-corporation-number"
-          value="${escapeHtml(p.corporation_number || "")}" placeholder="-"></div>
-      </div>
-
       <div class="pf-row">
         <div class="pf-label">대표자명</div>
         <div class="pf-value"><input type="text" id="pf-representative-name"
           value="${escapeHtml(p.representative_name || "")}" placeholder="-"></div>
       </div>
+
       <div class="pf-row">
         <div class="pf-label">대표자 생년월일</div>
         <div class="pf-value"><input type="date" id="pf-representative-birth"
           value="${escapeHtml(p.representative_birth || "")}"></div>
       </div>
+      <div class="pf-row">
+        <div class="pf-label">설립일</div>
+        <div class="pf-value"><input type="date" id="pf-establishment-date"
+          value="${escapeHtml(p.establishment_date || "")}"></div>
+      </div>
 
       <div class="pf-row">
-        <div class="pf-label">종업원수</div>
+        <div class="pf-label">상시 근로자 수</div>
         <div class="pf-value"><input type="number" min="0" id="pf-employee-count"
           value="${p.employee_count != null ? p.employee_count : ""}" placeholder="-"></div>
       </div>
       <div class="pf-row">
-        <div class="pf-label">설립형태</div>
+        <div class="pf-label">창업 형태</div>
         <div class="pf-value">
           <select id="pf-founding-type">
             <option value="">선택</option>
@@ -7297,16 +7880,33 @@ async function renderProfilePanel() {
       </div>
 
       <div class="pf-row">
-        <div class="pf-label">설립일</div>
-        <div class="pf-value"><input type="date" id="pf-establishment-date"
-          value="${escapeHtml(p.establishment_date || "")}"></div>
+        <div class="pf-label">법인등록번호</div>
+        <div class="pf-value"><input type="text" id="pf-corporation-number"
+          value="${escapeHtml(p.corporation_number || "")}" placeholder="-"></div>
       </div>
       <div class="pf-row">
+        <div class="pf-label">업종 코드</div>
+        <div class="pf-value"><input type="text" id="pf-industry-code"
+          value="${escapeHtml(p.industry_code || "")}" placeholder="-"></div>
+      </div>
+    </div>
+
+    <!-- ─── 섹션 2: 소재지 · 연락처 ─── -->
+    <div class="profile-section-h">소재지 · 연락처</div>
+    <div class="pf-grid">
+      <div class="pf-row pf-row-wide">
+        <div class="pf-label">지역</div>
+        <div class="pf-value"><input type="text" id="pf-region-display"
+          value="${escapeHtml(p.region || "")}" placeholder="주소 검색 시 자동 입력" readonly
+          style="background:var(--bg-subtle);"></div>
+      </div>
+
+      <div class="pf-row pf-row-wide">
         <div class="pf-label">사업장 주소</div>
         <div class="pf-value">
           <div class="pf-value-addr">
             <input type="text" id="pf-business-address"
-              value="${escapeHtml(p.business_address || "")}" placeholder="-" readonly
+              value="${escapeHtml(p.business_address || "")}" placeholder="🔍 클릭해서 주소 검색" readonly
               style="background:var(--bg-subtle); cursor:pointer;" onclick="openDaumPostcode()">
             <input type="hidden" id="pf-address-zonecode" value="${escapeHtml(p.address_zonecode || "")}">
             <input type="hidden" id="pf-region" value="${escapeHtml(p.region || "")}">
@@ -7316,7 +7916,7 @@ async function renderProfilePanel() {
       </div>
 
       <div class="pf-row">
-        <div class="pf-label">전화번호</div>
+        <div class="pf-label">전화</div>
         <div class="pf-value"><input type="tel" id="pf-phone"
           value="${escapeHtml(p.phone || "")}" placeholder="-"></div>
       </div>
@@ -7327,47 +7927,47 @@ async function renderProfilePanel() {
       </div>
 
       <div class="pf-row">
-        <div class="pf-label">팩스번호</div>
+        <div class="pf-label">팩스</div>
         <div class="pf-value"><input type="tel" id="pf-fax"
           value="${escapeHtml(p.fax || "")}" placeholder="-"></div>
       </div>
       <div class="pf-row">
-        <div class="pf-label">홈페이지</div>
+        <div class="pf-label">웹사이트</div>
         <div class="pf-value"><input type="url" id="pf-website"
           value="${escapeHtml(p.website || "")}" placeholder="-"></div>
       </div>
+    </div>
 
-      <div class="pf-row">
-        <div class="pf-label">업종</div>
-        <div class="pf-value"><input type="text" id="pf-industry-code"
-          value="${escapeHtml(p.industry_code || "")}" placeholder="-"></div>
+    <!-- ─── 섹션 3: 업종 ─── -->
+    <div class="profile-section-h">업종</div>
+    <div class="pf-chip-section" style="padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:8px;">
+      <div class="pf-chip-cat-label">대표 업종을 선택하세요 (중복 선택 가능)</div>
+      <div class="pf-chips" id="pf-area-chips">
+        ${PF_BUSINESS_AREAS.map(area => `
+          <button type="button"
+            class="pf-chip-btn ${selectedAreas.has(area) ? "active" : ""}"
+            data-area="${escapeHtml(area)}"
+            onclick="this.classList.toggle('active')">
+            ${escapeHtml(area)}
+          </button>
+        `).join("")}
       </div>
-      <div class="pf-row">
-        <div class="pf-label">업태</div>
-        <div class="pf-value"><input type="text" id="pf-industry-type"
-          value="${escapeHtml(p.industry_type || "")}" placeholder="-"></div>
-      </div>
-
-      <div class="pf-row pf-row-wide">
-        <div class="pf-label">사업분야</div>
-        <div class="pf-value">
-          <div class="pf-chip-section" style="padding:8px 4px;">
-            <div class="pf-chip-cat-label">대분류 (중복 선택 가능)</div>
-            <div class="pf-chips" id="pf-area-chips">
-              ${PF_BUSINESS_AREAS.map(area => `
-                <button type="button"
-                  class="pf-chip-btn ${selectedAreas.has(area) ? "active" : ""}"
-                  data-area="${escapeHtml(area)}"
-                  onclick="this.classList.toggle('active')">
-                  ${escapeHtml(area)}
-                </button>
-              `).join("")}
-            </div>
-          </div>
-        </div>
+      <div style="margin-top:14px;">
+        <div class="pf-chip-cat-label">업태 (자유 입력)</div>
+        <input type="text" id="pf-industry-type"
+          value="${escapeHtml(p.industry_type || "")}" placeholder="예: 정보통신업, 도매·소매업"
+          style="width:100%; padding:9px 12px; border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:13px;">
       </div>
     </div>
   `;
+
+  // 주소 hidden 필드 (region) 변경 시 표시용 input 동기화
+  const hiddenRegion = document.getElementById("pf-region");
+  const displayRegion = document.getElementById("pf-region-display");
+  if (hiddenRegion && displayRegion) {
+    const obs = new MutationObserver(() => { displayRegion.value = hiddenRegion.value || ""; });
+    obs.observe(hiddenRegion, { attributes: true, attributeFilter: ["value"] });
+  }
 }
 
 // 다음 우편번호 서비스 통합
@@ -7385,7 +7985,11 @@ function openDaumPostcode() {
       // sido 매핑 — REGION_OPTIONS 의 정식명과 일치하는지 보정
       const sido = data.sido || "";
       const matched = (REGION_OPTIONS || []).find(r => r === sido || r.startsWith(sido.replace(/도$|시$/, "")));
-      document.getElementById("pf-region").value = matched || sido;
+      const regionVal = matched || sido;
+      document.getElementById("pf-region").value = regionVal;
+      // 표시용 input (지역) 도 동기화
+      const display = document.getElementById("pf-region-display");
+      if (display) display.value = regionVal;
     },
   }).open();
 }

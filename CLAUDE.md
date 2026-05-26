@@ -140,6 +140,30 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 3. 사용자 선택 → `POST /api/attachments/import-url` 반복 호출 (1건씩 download_to_bytes → analyze_pdf → DB)
 4. **Synap 뷰어 URL 직접 처리 X** — K-Startup `a.btn_down[href]` 의 다운로드 URL 사용 (`/afile/fileDownload/{key}`)
 
+### 디자인 v2 — 사이드바 / 카드 / 프로필 입히기 원칙
+
+**대원칙**: "기능 유지한 채 디자인만 입히기". 구조 변경이 기능을 해치는 경우 디자인 포기하고 보고. 사용자 명시.
+
+1. **사이드바 v2 (`.app-sidebar[data-workspace=...]`)**:
+   - 상단 워크스페이스 스위처 (`#sb-switcher`) — `서류 체커` / `아이디어 검증` 토글. `setWorkspace()` 가 `data-workspace` 속성 변경 → CSS 가 `.sb-nav-docs` / `.sb-nav-ideas` 토글.
+   - **profile 탭 없음** — 사이드바 하단 계정 카드 (`#sb-acc-profile`) 클릭으로만 진입. `renderAuthArea()` 에서 onclick 핸들러 부착 (탭 버튼이 아니므로 일반 `.tab-btn` 클릭 핸들러 안 탐).
+   - 비로그인 시 `#sb-account` 에 3-provider 로그인 버튼 (카카오/G/N 세로 스택).
+2. **매칭 카드 v2 (`#announcements-list` 스코프 한정 — 다른 탭의 카드 안 건드림)**:
+   - 외부: `.match-main` (flex:1) + `.match-cmp-zone` (width:78px) 의 flex row. 우측 zone 은 점선 border-left + 상하 절취 도트 (`::before`/`::after`) — 쿠폰 절단선 시각화.
+   - 비교 체크박스는 시각적으로 숨기고 (`.match-cmp-zone input { opacity:0 }`) `.mcz-box`(26px) + `.mcz-check`(✓) 로 대체 — **기능은 그대로 (`toggleCompareSelect(idx)`)**.
+   - 펼침 토글: `.match-toggle` 의 `.mt-text::after` content 가 expanded 클래스 유무로 "상세보기"/"접기" 자동 전환 (JS 텍스트 변경 X).
+3. **3단계 doc-status-pill**:
+   - `sum.missing > 0` 또는 `fulfillment === "none"` → `ds-short` (빨강 "서류 부족" ✗)
+   - `sum.expired > 0` 또는 `sum.expiring > 0` → `ds-risk` (주황 "만료 위험" ⚠)
+   - 그 외 → `ds-complete` (초록 "서류 완비" ✓)
+4. **홈 화면 컴팩트 카드 (`.home-sched-card`)**:
+   - 좌측 62px 색 블록 D-day: `urgent` (≤3일/오늘/진행중 빨강) / `imm` (≤7일 주황) / `calm` (그 외 파랑).
+   - 일정 데이터 자체는 동일 (`renderHomeEvents()` 가 결과만 새 마크업으로 출력) — 렌더링만 변경.
+5. **프로필 페이지 3섹션 분리** (`renderProfilePanel()`):
+   - `.profile-section-h` 3개로 grid 를 분리 — ① 기본 정보 / ② 소재지·연락처 / ③ 업종 카드.
+   - 지역(`pf-region-display`) 은 사용자가 직접 입력 못 함 (readonly + bg-subtle). Daum postcode 콜백이 hidden `pf-region` 과 함께 동시 set.
+   - 모든 `pf-*` ID 가 `saveProfileForm()` 의 querySelector 와 매칭 — **ID 바꾸면 저장 깨짐**.
+
 ---
 
 ## 안티패턴 (하지 말 것)
@@ -158,6 +182,11 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 | **LLM 응답에 `escapeHtml` 만 적용해서 raw 마크다운 노출** | `_renderCompareMarkdown` 사용 — escape 후 패턴 치환 (XSS 안전) |
 | **K-Startup 첨부에 Synap 뷰어 URL 직접 사용** | `a.btn_down[href]` 의 다운로드 URL 사용 (`/afile/fileDownload/{key}`) |
 | **연락처 (전화+URL) 를 escape 만 한 plain text 로** | `_formatContact` — 전화 포맷팅 + URL 한글 디코딩 + 호스트 위주 표시 + `tel:`/`http:` 링크 |
+| **매칭 카드 디자인 변경을 모든 `.announcement-card` 에 적용** | `#announcements-list .announcement-card` 스코프 한정 — 둘러보기 등 다른 탭의 카드 안 건드림 |
+| **`pf-*` 입력 ID 를 자유롭게 리네임** | `saveProfileForm()` 의 querySelector 와 1:1 매칭 — 바꾸면 프로필 저장 깨짐 |
+| **사이드바에 `data-tab="profile"` 탭 버튼 추가** | profile 은 사이드바에 없음 — `#sb-acc-profile` (계정 카드) 클릭 핸들러로만 진입 |
+| **워크스페이스 nav 토글을 JS 로 매번 show/hide** | `[data-workspace=...]` 속성 + CSS 셀렉터로 토글 (`setWorkspace()` 가 속성만 변경) |
+| **홈 다가오는 일정에 D-day 색을 단일 색으로** | urgent (≤3) / imm (≤7) / calm 3단계 그라데이션으로 우선순위 시각화 |
 
 ---
 
@@ -192,6 +221,9 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 | 프론트 (6탭 SPA) | [public/dashboard.html](public/dashboard.html) |
 | **캘린더 렌더 (주 단위 bar)** | [public/dashboard.html](public/dashboard.html) `renderCalendar` + `CAL_EVENT_CATEGORIES` |
 | **비교 결과 마크다운 렌더** | [public/dashboard.html](public/dashboard.html) `_renderCompareMarkdown`, `_renderInlineMd` |
+| **사이드바 워크스페이스 스위처** | [public/dashboard.html](public/dashboard.html) `setupWorkspaceSwitcher`, `setWorkspace`, `WORKSPACE_NAMES` |
+| **사이드바 하단 계정 카드 (프로필 진입점)** | [public/dashboard.html](public/dashboard.html) `renderAuthArea` 의 `#sb-acc-profile` onclick |
+| **프로필 3섹션 분리 렌더** | [public/dashboard.html](public/dashboard.html) `renderProfilePanel` |
 | 로그인 모달 | [public/index.html](public/index.html) |
 
 ---
