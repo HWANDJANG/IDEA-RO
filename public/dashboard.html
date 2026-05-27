@@ -6324,6 +6324,35 @@ async function deleteAttachment(fileHash) {
 }
 
 // ─── 서류 이미지 스캔 (Gemini Vision) ────────────────────────────────────
+
+// 업로드 전 리사이즈/압축 — GPT 합성 PNG 가 10MB+ 일 수 있고 nginx/Gemini 모두 한도 있음.
+// 최대 1600px, JPEG quality 0.85. 한도(2MB) 이하면 원본 유지.
+async function _compressImageForScan(file, maxSize = 1600, quality = 0.85, skipBelow = 2 * 1024 * 1024) {
+  if (file.size <= skipBelow && /^image\/jpe?g$/.test(file.type)) return file;
+  const dataUrl = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = dataUrl;
+  });
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);  // PNG 투명 배경 → 흰색
+  ctx.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+  return new File([blob], (file.name || "scan").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+}
+
 async function scanDocImage(event) {
   const input = event.target;
   const file = input.files && input.files[0];
@@ -6332,8 +6361,19 @@ async function scanDocImage(event) {
   const status = document.getElementById("doc-scan-status");
   status.innerHTML = `<div class="processing">발급내역 분석 중... (Gemini Vision, 3~8초)</div>`;
   try {
+    let uploadFile = file;
+    try {
+      uploadFile = await _compressImageForScan(file);
+      const origMB = (file.size / 1024 / 1024).toFixed(1);
+      const compMB = (uploadFile.size / 1024 / 1024).toFixed(1);
+      if (uploadFile !== file) {
+        status.innerHTML = `<div class="processing">이미지 압축 ${origMB}MB → ${compMB}MB · 분석 중...</div>`;
+      }
+    } catch (_e) {
+      // 압축 실패 시 원본으로 시도
+    }
     const fd = new FormData();
-    fd.append("image", file);
+    fd.append("image", uploadFile);
     const res = await fetch("/api/docs/scan", { method: "POST", body: fd });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "분석 실패" }));
