@@ -1,91 +1,909 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>아이디어 검증 — IDEA-RO</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; }
-    body {
-      font-family: "Noto Sans KR", "Inter", -apple-system, "맑은 고딕", sans-serif;
-      background: #F8F5F0;
-      color: #1A1714;
-      display: flex; flex-direction: column;
-    }
-    .ideas-topbar {
-      flex-shrink: 0;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 18px;
-      background: #fff;
-      border-bottom: 1px solid #E5DED2;
-      height: 50px;
-    }
-    .ideas-back {
-      display: inline-flex; align-items: center; gap: 7px;
-      padding: 7px 13px;
-      border-radius: 8px;
-      background: #F4ECE0;
-      color: #1A1714;
-      text-decoration: none;
-      font-size: 13px; font-weight: 600;
-      transition: background 0.12s;
-    }
-    .ideas-back:hover { background: #E8DCC8; }
-    .ideas-back-arrow { font-size: 14px; }
-    .ideas-brand {
-      font-family: "GFS Didot", "Noto Serif KR", serif;
-      font-size: 17px;
-      letter-spacing: 0.01em;
-      color: #1A1714;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .ideas-brand-dot {
-      width: 12px; height: 12px; border-radius: 50%;
-      background: #1A1714;
-    }
-    .ideas-sub {
-      font-size: 12px; color: #8A8275;
-      font-weight: 500;
-    }
-    .ideas-frame-wrap {
-      flex: 1; position: relative;
-      background: #fff;
-    }
-    .ideas-frame-wrap iframe {
-      width: 100%; height: 100%;
-      border: 0; display: block;
-    }
-    @media (max-width: 600px) {
-      .ideas-sub { display: none; }
-      .ideas-topbar { padding: 8px 12px; }
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>아이디어 검증 — IDEA-RO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700;900&family=Noto+Sans+KR:wght@400;500;600;700&family=GFS+Didot&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFFEFA;
+    --bg-subtle: #F5F1EA;
+    --bg-accent: #EFE9DD;
+    --card: #FFFFFF;
+    --border: #EFE9DD;
+    --border-strong: #D9D0BD;
+    --text: #1A1714;
+    --muted: #6B6358;
+    --primary: #4A6BC9;
+    --accent: #D9521A;
+    --accent-soft: #F4D9C8;
+    --dark: #1A1714;
+
+    --green: #3F7A4D;
+    --green-soft: #E4EDE2;
+    --yellow: #B5862B;
+    --yellow-soft: #F3E8CE;
+    --red: #C0432A;
+    --red-soft: #F3DBD1;
+
+    --serif-ko: "Noto Serif KR", "Nanum Myeongjo", serif;
+    --serif-en: "GFS Didot", "Noto Serif KR", serif;
+    --sans-ko: "Noto Sans KR", "Inter", -apple-system, "맑은 고딕", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans-ko); font-size: 15px; line-height: 1.6;
+    letter-spacing: -0.005em; -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  /* ─── 상단 헤더 ─── */
+  header.top {
+    max-width: 1240px; margin: 0 auto;
+    padding: 26px 40px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .brand {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--serif-en); font-size: 22px; letter-spacing: 0.01em;
+  }
+  .brand-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--dark); display: inline-block; }
+  nav.top-nav {
+    display: flex; gap: 28px; font-size: 14px; color: var(--muted); font-weight: 500; align-items: center;
+  }
+  nav.top-nav a:hover { color: var(--text); }
+  nav.top-nav .back-link { color: var(--accent); font-weight: 600; }
+
+  /* ─── 페이지 인트로 ─── */
+  .page-intro {
+    max-width: 1240px; margin: 14px auto 0; padding: 0 40px;
+  }
+  .intro-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 12.5px; font-weight: 600; padding: 6px 14px; border-radius: 999px; letter-spacing: 0.02em;
+  }
+  .intro-eyebrow::before { content: ""; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; }
+  .page-intro h1 {
+    font-family: var(--serif-ko); font-weight: 500;
+    font-size: clamp(36px, 5vw, 56px); line-height: 1.12; letter-spacing: -0.03em;
+    margin: 20px 0 0; color: var(--text);
+  }
+  .page-intro h1 .accent { color: var(--accent); font-style: italic; font-weight: 500; }
+  .page-intro .sub { margin: 18px 0 0; color: var(--muted); font-size: 15px; line-height: 1.7; max-width: 620px; }
+
+  /* ─── 본문 그리드 ─── */
+  main {
+    max-width: 1240px; margin: 0 auto;
+    display: grid; grid-template-columns: 400px 1fr; gap: 28px; padding: 36px 40px 20px;
+    align-items: start;
+  }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+    position: sticky; top: 20px;
+  }
+  @media (max-width: 980px) { .panel { position: static; } }
+  .panel h2 {
+    margin: 0 0 16px 0; font-family: var(--serif-ko); font-weight: 600; font-size: 22px; letter-spacing: -0.02em;
+  }
+  label { display: block; margin: 14px 0 6px 0; font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; }
+  textarea, select, button {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 12px 14px; font-family: inherit; font-size: 14.5px; line-height: 1.6;
+  }
+  textarea { min-height: 190px; resize: vertical; }
+  textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217,82,26,.12); }
+  button#go {
+    margin-top: 20px; border: none; font-weight: 600; cursor: pointer; padding: 13px;
+    background: var(--accent); color: #fff; font-size: 15px; border-radius: 10px;
+    transition: background .15s ease, transform .15s ease;
+  }
+  button#go:hover:not(:disabled) { background: #BF4715; transform: translateY(-1px); }
+  button#go:disabled { opacity: .55; cursor: not-allowed; }
+
+  /* 단계별 로딩 */
+  .pipeline { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--bg-subtle); border-radius: 10px; }
+  .step { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
+  .step .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); flex-shrink: 0; }
+  .step.active .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(217,82,26,.15); animation: pulse 1s infinite; }
+  .step.done .dot { background: var(--green); }
+  .step.done { color: var(--text); }
+  @keyframes pulse { 0%,100% {opacity:1;} 50% {opacity:.4;} }
+
+  /* ─── 결과 ─── */
+  .overall {
+    display: flex; align-items: flex-start; gap: 16px; padding: 22px 24px; border-radius: 14px;
+    background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+    margin-bottom: 18px;
+  }
+  .overall .badge { font-weight: 700; padding: 6px 13px; border-radius: 999px; font-size: 12px; color: #fff; letter-spacing: 0.04em; flex-shrink: 0; }
+  .badge.green { background: var(--green); }
+  .badge.yellow { background: var(--yellow); }
+  .badge.red { background: var(--red); }
+  .overall .text { flex: 1; font-size: 14.5px; }
+  .overall .text strong { color: var(--text); font-family: var(--serif-ko); font-weight: 600; font-size: 18px; line-height: 1.4; display: inline-block; margin-bottom: 4px; }
+
+  /* 검증 가설 — 핵심 */
+  .hypotheses {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 18px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+  }
+  .hypotheses h3 { margin: 0 0 4px 0; font-family: var(--serif-en); font-size: 14px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.14em; }
+  .hypotheses .hint { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .hyp { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 12px; }
+  .hyp .h-title { font-family: var(--serif-ko); font-weight: 500; font-size: 16px; line-height: 1.45; margin-bottom: 8px; display: flex; align-items: baseline; gap: 10px; letter-spacing: -0.01em; }
+  .hyp .h-verdict { font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 700; letter-spacing: 0.02em; flex-shrink: 0; }
+  .hyp .h-verdict.confirm { background: var(--green-soft); color: var(--green); }
+  .hyp .h-verdict.refute { background: var(--red-soft); color: var(--red); }
+  .hyp .h-verdict.mixed { background: var(--yellow-soft); color: var(--yellow); }
+  .hyp .evidence { color: var(--muted); font-size: 12.5px; margin-top: 8px; padding-left: 14px; border-left: 2px solid var(--border-strong); }
+  .hyp .evidence .co-name { color: var(--primary); font-weight: 600; }
+
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+    display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+    transition: box-shadow .18s ease, transform .18s ease;
+  }
+  .card:hover { box-shadow: 0 10px 30px rgba(26,23,20,.07); transform: translateY(-2px); }
+  .card .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .card .title { font-family: var(--serif-en); font-weight: 400; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .card .ai-tag { font-size: 10.5px; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .card .headline { font-family: var(--serif-ko); font-size: 16px; font-weight: 500; line-height: 1.45; letter-spacing: -0.01em; }
+  .card .narrative { color: var(--muted); font-size: 13.5px; white-space: pre-wrap; }
+  .card .meta-list { font-size: 12.5px; color: var(--muted); margin: 4px 0 0 0; padding: 12px 14px; background: var(--bg-subtle); border-radius: 10px; }
+  .card .meta-list .row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+  .card .meta-list .row .k { color: var(--muted); }
+  .card .meta-list .row .v { color: var(--text); font-weight: 600; text-align: right; }
+
+  /* 집중 분석 (핵심 구현) — 성공/실패 유사도 + 캐즘 강조 */
+  .featured { margin-bottom: 18px; }
+  .featured-label {
+    display: inline-flex; align-items: center; gap: 12px;
+    font-family: var(--serif-en); font-size: 14px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 14px;
+  }
+  .featured-label::before { content: ""; width: 36px; height: 1px; background: var(--accent); }
+  .featured-card {
+    border-left: 3px solid var(--accent);
+    box-shadow: 0 6px 24px rgba(217, 82, 26, 0.08);
+  }
+  .featured-card .headline { font-size: 18px; }
+
+  .signal-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; margin-right: 8px; vertical-align: middle; }
+  .signal-dot.green { background: var(--green); }
+  .signal-dot.yellow { background: var(--yellow); }
+  .signal-dot.red { background: var(--red); }
+
+  .chart {
+    margin-top: 8px; height: 68px; display: flex; align-items: end; gap: 2px;
+    background: var(--bg-subtle); border-radius: 10px; padding: 8px;
+  }
+  .chart .bar { flex: 1; background: var(--primary); border-radius: 2px 2px 0 0; opacity: .8; }
+  .chart .bar.peak { background: var(--accent); opacity: 1; }
+
+  .wbs-item { padding: 8px 12px; background: var(--bg-subtle); border-radius: 8px; margin-top: 5px; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; font-size: 12.5px; align-items: center; }
+  .wbs-item .week { color: var(--muted); }
+  .wbs-item .diff { font-size: 10px; padding: 2px 7px; border-radius: 999px; font-weight: 600; }
+  .wbs-item .diff.low { background: var(--green-soft); color: var(--green); }
+  .wbs-item .diff.mid { background: var(--yellow-soft); color: var(--yellow); }
+  .wbs-item .diff.high { background: var(--red-soft); color: var(--red); }
+
+  .policy-preview { font-size: 12.5px; color: var(--muted); padding: 12px 14px; background: var(--bg-subtle); border-radius: 10px; }
+  .policy-preview .top-pick { color: var(--text); font-weight: 600; }
+  .policy-cta {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    margin-top: 8px; padding: 11px 16px; border-radius: 10px;
+    background: var(--dark); color: #F5F1EA; font-weight: 600; font-size: 13.5px; text-decoration: none;
+    transition: background .15s ease;
+  }
+  .policy-cta:hover { background: #2a2622; }
+
+  .status { color: var(--muted); font-size: 12.5px; margin-top: 12px; min-height: 18px; }
+  .gone { opacity: 0; pointer-events: none; }
+  .fade-in { animation: fadeIn .4s ease both; }
+  @keyframes fadeIn { from {opacity:0; transform: translateY(6px);} to {opacity:1; transform:none;} }
+
+  /* ─── 정책 매칭 뷰 ─── */
+  .view.hidden { display: none; }
+  .context {
+    max-width: 1240px; margin: 24px auto 0; padding: 18px 24px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+  }
+  .context .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .context .ctx-item { display: flex; flex-direction: column; gap: 3px; }
+  .context .ctx-item .v { color: var(--text); font-weight: 600; font-family: var(--serif-ko); font-size: 16px; }
+  .context .pivot { margin-left: auto; color: var(--accent); font-size: 13px; font-weight: 500; }
+  .context .pivot:hover { text-decoration: underline; }
+  .policy-main {
+    max-width: 1240px; margin: 0 auto;
+    display: grid; grid-template-columns: 240px 1fr; gap: 28px; padding: 28px 40px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .policy-main { grid-template-columns: 1fr; } }
+  .filters {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+    height: fit-content; box-shadow: 0 1px 2px rgba(26,23,20,.03);
+  }
+  .filters h2 { margin: 0 0 12px 0; font-family: var(--serif-ko); font-size: 18px; font-weight: 600; }
+  .filters .group { margin-top: 16px; }
+  .filters .group-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .filters label.check { display: flex; align-items: center; gap: 8px; padding: 5px 0; margin: 0; font-size: 13.5px; color: var(--text); cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .filters input[type="checkbox"] { accent-color: var(--accent); width: auto; }
+  .filters select {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 9px 10px; font-family: inherit; font-size: 13.5px;
+  }
+  .results-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+  .results-head .count { font-size: 13.5px; color: var(--muted); }
+  .results-head .count strong { color: var(--text); }
+  .results-head .legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--muted); }
+  .policy-grid { display: flex; flex-direction: column; gap: 14px; }
+  .pcard {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+  }
+  .pcard .row1 { display: flex; align-items: flex-start; gap: 14px; }
+  .pcard .fit { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; flex-shrink: 0; }
+  .pcard .fit.green { background: var(--green-soft); color: var(--green); }
+  .pcard .fit.yellow { background: var(--yellow-soft); color: var(--yellow); }
+  .pcard .fit.red { background: var(--red-soft); color: var(--red); }
+  .pcard .name { font-family: var(--serif-ko); font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
+  .pcard .org { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .pcard .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+  @media (max-width: 600px) { .pcard .meta { grid-template-columns: 1fr; } }
+  .pcard .meta .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .pcard .meta .v { font-size: 14.5px; color: var(--text); margin-top: 3px; font-weight: 600; }
+  .pcard .meta .v.amt { color: var(--green); }
+  .pcard .meta .v.dday { color: var(--primary); }
+  .pcard .meta .v.dday.soon { color: var(--accent); }
+  .pcard .reason {
+    margin-top: 16px; padding: 12px 14px; background: var(--bg-subtle); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0;
+    font-size: 12.5px; color: var(--text);
+  }
+  .pcard .reason .why { color: var(--accent); font-weight: 600; margin-right: 6px; }
+  .pcard .actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .pcard .apply {
+    width: auto; padding: 10px 16px; border-radius: 10px; background: var(--accent); color: #fff;
+    font-weight: 600; font-size: 13.5px; text-decoration: none; cursor: pointer; border: none;
+  }
+  .pcard .apply:hover { background: #BF4715; }
+  .pcard .save {
+    width: auto; background: transparent; border: 1px solid var(--border-strong); color: var(--muted);
+    padding: 9px 14px; border-radius: 10px; font-size: 12.5px; cursor: pointer;
+  }
+  .pcard .save:hover { color: var(--text); border-color: var(--accent); }
+  .pcard .req { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+  .pcard .req .tag { display: inline-block; background: var(--bg-subtle); padding: 3px 10px; border-radius: 999px; margin-right: 5px; margin-top: 4px; color: var(--text); }
+  .footer-back {
+    text-align: center; padding: 32px; color: var(--muted); font-size: 13.5px;
+  }
+  .footer-back a { color: var(--accent); font-weight: 500; }
+  .footer-back a:hover { text-decoration: underline; }
+
+  /* ─── 실행 가이드 상세 뷰 ─── */
+  .guide-main {
+    max-width: 1240px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 320px; gap: 28px; padding: 28px 40px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .guide-main { grid-template-columns: 1fr; } }
+  .guide-primary {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+  }
+  .guide-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .guide-primary h2 { margin: 0; font-family: var(--serif-ko); font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  .cal-cta {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 14px; border-radius: 10px; background: var(--bg-subtle);
+    border: 1px solid var(--border-strong); color: var(--text); font-size: 13px; font-weight: 600;
+  }
+  .cal-cta:hover { border-color: var(--accent); color: var(--accent); }
+  .guide-lead { color: var(--muted); font-size: 14px; margin: 14px 0 24px; line-height: 1.7; }
+
+  .timeline { position: relative; margin-left: 8px; padding-left: 28px; border-left: 2px solid var(--border-strong); }
+  .tl-item { position: relative; padding-bottom: 22px; }
+  .tl-item:last-child { padding-bottom: 0; }
+  .tl-item::before {
+    content: ""; position: absolute; left: -35px; top: 4px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--card); border: 3px solid var(--accent);
+  }
+  .tl-week { font-family: var(--serif-en); font-size: 13px; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+  .tl-body { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .tl-task { font-family: var(--serif-ko); font-size: 16px; font-weight: 500; letter-spacing: -0.01em; }
+
+  .guide-side { display: flex; flex-direction: column; gap: 18px; }
+  .guide-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+  }
+  .guide-box h3 { margin: 0 0 14px 0; font-family: var(--serif-en); font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em; }
+  .res-item { padding: 10px 0; border-top: 1px solid var(--border); }
+  .res-item:first-child { padding-top: 0; border-top: none; }
+  .res-t { font-size: 14px; font-weight: 500; color: var(--text); }
+  .res-src { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .stack-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .stack-chip { background: var(--bg-subtle); border: 1px solid var(--border); padding: 6px 12px; border-radius: 999px; font-size: 13px; color: var(--text); }
+
+  /* ─── 하단 푸터 ─── */
+  footer.bottom {
+    max-width: 1240px; margin: 48px auto 56px; padding: 0 40px;
+    border-top: 1px solid var(--border); padding-top: 28px;
+    display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 20px;
+  }
+  .footer-mark { font-family: var(--serif-en); font-size: 44px; line-height: 1.0; color: var(--text); }
+  .footer-mark .italic { font-style: italic; color: var(--accent); display: block; margin-top: 8px; }
+  .footer-meta { font-family: var(--serif-en); font-size: 13px; color: var(--muted); letter-spacing: 0.05em; }
+</style>
 </head>
 <body>
-
-<header class="ideas-topbar">
-  <a class="ideas-back" href="/">
-    <span class="ideas-back-arrow">←</span>
-    메인으로
+<header class="top">
+  <a href="/" class="brand">
+    <span class="brand-dot"></span>
+    IDEA-RO
   </a>
-  <div class="ideas-brand">
-    <span class="ideas-brand-dot"></span>
-    <span>아이디어 검증</span>
-    <span class="ideas-sub">· evaluate-idea</span>
-  </div>
-  <div style="width:88px"></div>
+  <nav class="top-nav">
+    <a href="/" class="back-link">← 메인으로</a>
+  </nav>
 </header>
 
-<div class="ideas-frame-wrap">
-  <iframe
-    src="https://evaluate-idea.vercel.app/vision.html"
-    title="아이디어 검증"
-    referrerpolicy="no-referrer-when-downgrade"
-    loading="lazy"
-    allow="clipboard-read; clipboard-write"
-  ></iframe>
+<section class="page-intro view" id="intro-main">
+  <span class="intro-eyebrow">TRACK 01 · PRE-FOUNDER</span>
+  <h1>당신의 아이디어,<br><span class="accent">데이터로</span> 검증합니다.</h1>
+  <p class="sub">
+    YC 5,785개사·Google Trends·정부 지원사업을 한 번에 교차 분석해 — 가설을 입증/반박하고,
+    시장 규모를 추정하고, 노려야 할 정책까지 매칭해 드립니다.
+  </p>
+</section>
+
+<main id="view-main" class="view">
+  <section class="panel">
+    <h2>아이디어 입력</h2>
+    <form id="f">
+      <label>아이디어를 한 덩어리로 자유롭게 입력</label>
+      <textarea id="idea">카드 결제 시 1000원 미만 잔돈을 자동으로 모아 ETF·우량주에 분산투자하는 모바일 앱. 한국 20-30대 직장인 타겟, 월 구독 + AUM 수수료.</textarea>
+
+      <label>타겟 시장</label>
+      <select id="market">
+        <option value="KR" selected>KR</option>
+        <option value="US">US</option>
+        <option value="global">global</option>
+      </select>
+
+      <button id="go" type="submit">AI 분석 시작</button>
+
+      <div class="pipeline" id="pipeline" hidden>
+        <div class="step" data-step="parse"><span class="dot"></span>아이디어 의도 파싱 (LLM)</div>
+        <div class="step" data-step="embed"><span class="dot"></span>YC 5,785사 의미 검색 (임베딩 코사인)</div>
+        <div class="step" data-step="trends"><span class="dot"></span>Google Trends 한국·글로벌 5년 추이</div>
+        <div class="step" data-step="hyp"><span class="dot"></span>검증 가설 분해 (LLM)</div>
+        <div class="step" data-step="market"><span class="dot"></span>시장 규모 추정 (통계청 + LLM)</div>
+        <div class="step" data-step="policy"><span class="dot"></span>K-Startup 정책 매칭</div>
+        <div class="step" data-step="guide"><span class="dot"></span>실행 가이드·WBS 생성 (LLM)</div>
+      </div>
+
+      <div class="status" id="status"></div>
+    </form>
+  </section>
+
+  <section id="results">
+    <!-- 결과는 JS가 채움 -->
+  </section>
+</main>
+
+<!-- 정책 매칭 상세 뷰 (별도 메뉴 흉내) — 메인 뷰가 숨겨질 때 노출됨 -->
+<div id="view-policy" class="view hidden">
+  <div class="context">
+    <div class="ctx-item">
+      <span class="label">검증 중인 아이디어</span>
+      <span class="v">잔돈 자동 ETF 투자 앱</span>
+    </div>
+    <div class="ctx-item">
+      <span class="label">분야</span>
+      <span class="v">Fintech · 핀테크</span>
+    </div>
+    <div class="ctx-item">
+      <span class="label">단계</span>
+      <span class="v">시드 이전 · MVP 기획</span>
+    </div>
+    <div class="ctx-item">
+      <span class="label">대표 추정</span>
+      <span class="v">청년 (만 39세 이하)</span>
+    </div>
+    <a href="#" class="pivot">← 다른 아이디어로 다시 매칭</a>
+  </div>
+  <div class="policy-main">
+    <aside class="filters">
+      <h2>필터</h2>
+      <div class="group">
+        <div class="group-label">지원 유형</div>
+        <label class="check"><input type="checkbox" checked /> 자금 지원</label>
+        <label class="check"><input type="checkbox" checked /> 라이선스·규제 특례</label>
+        <label class="check"><input type="checkbox" checked /> 멘토링·보육</label>
+        <label class="check"><input type="checkbox" checked /> 글로벌 진출</label>
+      </div>
+      <div class="group">
+        <div class="group-label">상태</div>
+        <label class="check"><input type="checkbox" /> 마감 D-30 이내</label>
+        <label class="check"><input type="checkbox" checked /> 상시 모집 포함</label>
+        <label class="check"><input type="checkbox" /> 적합도 🟢만</label>
+      </div>
+      <div class="group">
+        <div class="group-label">정렬</div>
+        <select>
+          <option>적합도 높은 순</option>
+          <option>마감 임박 순</option>
+          <option>지원 금액 높은 순</option>
+          <option>최근 공고 순</option>
+        </select>
+      </div>
+    </aside>
+    <section>
+      <div class="results-head">
+        <div class="count">매칭된 정책 <strong>8건</strong> · 적합도 🟢 4건 · 🟡 3건 · 🔴 1건</div>
+        <div class="legend">
+          <span><span class="signal-dot green"></span>높음</span>
+          <span><span class="signal-dot yellow"></span>보통</span>
+          <span><span class="signal-dot red"></span>낮음</span>
+        </div>
+      </div>
+      <div class="policy-grid" id="policyGrid"></div>
+    </section>
+  </div>
+  <div class="footer-back">
+    <a href="#">← 검증 결과로 돌아가기</a>
+  </div>
 </div>
 
+<!-- 실행 가이드 상세 뷰 (별도 메뉴 흉내) — 메인 뷰가 숨겨질 때 노출됨 -->
+<div id="view-guide" class="view hidden">
+  <div class="context">
+    <div class="ctx-item">
+      <span class="label">검증 중인 아이디어</span>
+      <span class="v">잔돈 자동 ETF 투자 앱</span>
+    </div>
+    <div class="ctx-item">
+      <span class="label">로드맵</span>
+      <span class="v">16주 MVP</span>
+    </div>
+    <div class="ctx-item">
+      <span class="label">권장 구조</span>
+      <span class="v">증권사 화이트레이블</span>
+    </div>
+    <div class="ctx-item">
+      <span class="label">추정 배경</span>
+      <span class="v">일반 개발자</span>
+    </div>
+    <a href="#" class="pivot">← 검증 결과로 돌아가기</a>
+  </div>
+  <div class="guide-main">
+    <section class="guide-primary">
+      <div class="guide-head">
+        <h2>실행 로드맵 · WBS</h2>
+        <a class="cal-cta" href="#" onclick="alert('모킹입니다 — 캘린더 연동은 후속 작업'); return false;">→ 캘린더로 export</a>
+      </div>
+      <p class="guide-lead" id="guideLead"></p>
+      <div class="timeline" id="guideWbs"></div>
+    </section>
+    <aside class="guide-side">
+      <div class="guide-box">
+        <h3>맞춤 학습 자료</h3>
+        <div id="guideResources"></div>
+      </div>
+      <div class="guide-box">
+        <h3>추천 기술 스택</h3>
+        <div id="guideStack" class="stack-chips"></div>
+      </div>
+    </aside>
+  </div>
+  <div class="footer-back">
+    <a href="#">← 검증 결과로 돌아가기</a>
+  </div>
+</div>
+
+<footer class="bottom">
+  <div class="footer-mark">
+    Start small.
+    <span class="italic">Win big.</span>
+  </div>
+  <div class="footer-meta">© 2026 IDEA-RO</div>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// 잔돈투자 시나리오 — 완성형 가짜 결과
+const MOCK_RESULT = {
+  overall: { signal: "red", headline: "단독 진입 비추천 · 증권사 화이트레이블 또는 글로벌 동시 진출로 피벗 권장",
+    narrative: "한국 잔돈투자 시장은 토스·카카오·한투 빅3가 이미 점령. Google Trends는 2022 피크 후 하강. 그러나 YC 글로벌 데이터에서 'Investing 실행 + 결과 가시화'까지 간 회사들의 생존율이 평균보다 +13%p 높음 — 자동화 자체가 아니라 그 다음의 '교육·게임화' 가 진짜 차별화 포인트." },
+  hypotheses: [
+    { title: "가설 1 — 한국 20-30대는 잔돈 자동화에 월 $3 지불할 의향이 있다",
+      verdict: "refute",
+      narrative: "토스·카카오의 무료 디폴트가 이미 시장 가격을 0으로 끌어내림. Anfin(베트남)·TAI(미국)는 무료 + 거래수수료 모델로 생존.",
+      evidence: [
+        { co: "Anfin (W22)", note: "무료 + 거래수수료 — 동남아 리테일 1.5M users" },
+        { co: "Acorns (글로벌)", note: "월 $3이지만 미국 한정 — 한국 ARPU와 다른 시장" },
+      ] },
+    { title: "가설 2 — '투자 실행 + 결과 가시화' 가 자동화보다 더 강한 retention 드라이버다",
+      verdict: "confirm",
+      narrative: "YC 풀 109건에서 'Investing' 태그 보유 회사의 success rate는 베이스라인 +28%p. 'Neobank 단독' 회사들은 -12%p — 단순 모으기는 죽고, 실행/시각화는 산다.",
+      evidence: [
+        { co: "TAI (W22, Acquired)", note: "Control All of Your Investments — 시각화 중심으로 인수" },
+        { co: "Finary (W21, Active)", note: "Wealth manager for Europe — 자산 통합 시각화" },
+      ] },
+    { title: "가설 3 — 한국 시장 단독으로 시리즈 A 도달 가능하다",
+      verdict: "refute",
+      narrative: "SOM 18억원/년(점유 5% 기준)으로는 시드 라운드 가능, 시리즈 A 빠듯. 글로벌 동시 진출이 거의 필수.",
+      evidence: [
+        { co: "한국 YC 회사 (전체 5건)", note: "Fintech 카테고리에서 한국 HQ 0건 — 글로벌 검증 부족" },
+        { co: "Acorns S-1", note: "IPO 직전 회수 — 단일 시장 한계의 케이스 스터디" },
+      ] },
+  ],
+  similarity: {
+    signal: "yellow", headline: "성공률 86% — 도메인은 우호적, 단 '잔돈 자동화' 단독은 위험",
+    narrative: "임베딩 코사인 + 자카드 hybrid로 YC 5,785사 중 의미적으로 가장 가까운 109건 추출. 단순 자동화에 머문 회사는 죽고, 투자 실행/시각화로 확장한 회사가 생존.",
+    meta: { "성공/실패 비율": "92 / 14 (86% vs 베이스라인 82%)", "Top 5 임베딩 유사도": "0.81 ~ 0.74", "한국 매칭": "0건 (데이터 한계)" },
+  },
+  competitors: {
+    signal: "red", headline: "토스·카카오·한투 모두 진입. YC Top Co 8개 활성",
+    narrative: "국내 빅3가 잔돈모으기→증권사 자동매수까지 일체화. LLM이 분석한 차별화 가능 포인트 3개: (1) 외국 ETF 자동 환전·세금 자동 신고 (2) 다회차 ETF 적립의 게임화 (3) 가족·커플 공동 잔돈투자.",
+    meta: { "국내 활성": "토스, 카카오페이, 한투 미니스탁, NH 위미니", "글로벌 활성": "Acorns, Stash, Anfin, Finary", "TAM 점유": "빅3가 50%+" },
+  },
+  chasm: {
+    signal: "red", headline: "한국 '잔돈투자' 2022 피크 후 -68% · 'AI 자동투자' 신규 시그널 +89%",
+    narrative: "검색 추이로 본 캐즘: 한국은 Late Mainstream 진입, 식는 중. 단 'AI 기반 자동투자' 키워드는 2024 후반부터 다시 가파른 상승. 이게 진짜 신규 진입 시점일 수 있음.",
+    chart: [12,15,22,28,40,55,72,85,95,90,75,60,52,48,45,42,38,35,33,30,28,25,28,42,58,70,82,95],
+    peakIdx: 8,
+  },
+  profitability: {
+    signal: "yellow", headline: "수익 모델 명확하나 한국 ARPU 한계 — 글로벌 동시 진출 필수",
+    narrative: "월 구독 $3 + AUM 0.25% 가정 → 한국 ARPU $36/yr. Acorns S-1 기준 LTV/CAC = 2.1 (양호). 단 한국은 무료 디폴트라 LTV/CAC가 0.8 수준으로 떨어질 가능성 높음.",
+    meta: { "추천 가격 (한국)": "무료 + 거래수수료 0.1%", "추천 가격 (글로벌)": "월 $5 (Stash benchmark)", "추정 ARPU": "$36/yr (KR) · $48/yr (US)" },
+  },
+  marketSize: {
+    signal: "yellow", headline: "TAM 1,200억원 · SAM 360억원 · SOM 18억원 (3년차 5% 점유)",
+    narrative: "통계청 20-30대 직장인 1,030만 × 투자 관심도 32% × ARPU $36 = TAM. 빅3 점유 제외 시 진입 가능 SAM은 360억원. 시리즈 A까지 가려면 글로벌 진출 필수.",
+    meta: { "TAM (KR)": "1,200억원/년", "SAM (KR)": "360억원/년", "SOM (3y)": "18억원/년", "글로벌 합산 SOM": "~120억원/년" },
+  },
+  policy: {
+    signal: "green", headline: "K-Startup 정책 매칭 5건 — 핀테크 라이선스 우회 가능 트랙 발견",
+    narrative: "혁신금융서비스(특례) 트랙 + 디지털금융 규제 샌드박스로 자본금 요건 회피 가능. 청년·핀테크 결합으로 최대 3억원 지원 가능.",
+    items: [
+      { name: "TIPS 핀테크 트랙 2026", amt: "최대 5억원" },
+      { name: "혁신금융서비스 지정 (금융위)", amt: "라이선스 면제" },
+      { name: "디지털금융 규제 샌드박스", amt: "2년 특례" },
+      { name: "청년창업사관학교 14기", amt: "최대 1억원" },
+      { name: "K-STARTUP 글로벌 진출 패키지", amt: "최대 1.5억원" },
+    ],
+  },
+  guide: {
+    signal: "green", headline: "16주 MVP 로드맵 · 핀테크 진입장벽 회피 화이트레이블 구조 권장",
+    narrative: "법적 진입장벽 우회를 위해 증권사 화이트레이블 구조 추천. LLM이 사용자 배경(추정: 일반 개발자) 기반으로 학습 자료 5종·기술 스택 7개·WBS 6주차 생성.",
+    wbs: [
+      { w: "1-2주", t: "법적 검토 — 전자금융업 vs 화이트레이블", d: "high" },
+      { w: "3-5주", t: "사용자 인증 + eKYC (PASS·NICE)", d: "mid" },
+      { w: "6-8주", t: "오픈뱅킹 연동 + 잔돈 계산 로직", d: "mid" },
+      { w: "9-12주", t: "자동 이체 + 증권사 API 연계", d: "high" },
+      { w: "13-14주", t: "포트폴리오 시각화 + 게임화 (가설 2)", d: "mid" },
+      { w: "15-16주", t: "베타 100명 + 정성 인터뷰", d: "low" },
+    ],
+    resources: [
+      { t: "전자금융거래법·자본시장법 입문", src: "법제처 · 금융위 핀테크 가이드" },
+      { t: "증권사 화이트레이블(WTS) 연동 사례", src: "한투·KB 오픈API 문서" },
+      { t: "오픈뱅킹 출금이체 API 연동", src: "금융결제원 개발자센터" },
+      { t: "eKYC·비대면 실명확인 구현", src: "PASS·NICE 기술문서" },
+      { t: "리테일 투자앱 게임화·리텐션 패턴", src: "Acorns / Stash 케이스 스터디" },
+    ],
+    stack: ["React Native", "TypeScript", "FastAPI", "PostgreSQL", "오픈뱅킹 API", "증권사 WTS API", "PASS eKYC"],
+    cal: "→ 캘린더로 export (Google Calendar / Apple)",
+  },
+};
+
+async function runPipeline() {
+  const steps = ["parse", "embed", "trends", "hyp", "market", "policy", "guide"];
+  const pipeline = $("pipeline");
+  pipeline.hidden = false;
+  // 초기화
+  for (const s of steps) {
+    const el = pipeline.querySelector(`[data-step="${s}"]`);
+    el.classList.remove("active", "done");
+  }
+  for (const s of steps) {
+    const el = pipeline.querySelector(`[data-step="${s}"]`);
+    el.classList.add("active");
+    await sleep(450 + Math.random() * 350);
+    el.classList.remove("active");
+    el.classList.add("done");
+  }
+}
+
+function renderResults(r) {
+  const root = $("results");
+  root.innerHTML = "";
+
+  // Overall
+  const overall = document.createElement("div");
+  overall.className = "overall fade-in";
+  overall.innerHTML = `
+    <span class="badge ${r.overall.signal}">${r.overall.signal.toUpperCase()}</span>
+    <div class="text"><strong>${r.overall.headline}</strong><br><span style="color:var(--muted)">${r.overall.narrative}</span></div>
+  `;
+  root.appendChild(overall);
+
+  // ── 공통 헬퍼 ──
+  const card = (label, ai, body) => {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `
+      <div class="head">
+        <div class="title">${label}</div>
+        ${ai ? `<div class="ai-tag">${ai}</div>` : ""}
+      </div>
+      ${body}
+    `;
+    return el;
+  };
+  const sigDot = (s) => `<span class="signal-dot ${s}"></span>`;
+  const metaList = (m) => `<div class="meta-list">${Object.entries(m).map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>`;
+
+  // ── 집중 분석 (핵심 구현) — 성공/실패 유사도 + 캐즘 ──
+  const featured = document.createElement("div");
+  featured.className = "featured fade-in";
+  featured.innerHTML = `<div class="featured-label">집중 분석 · 핵심 구현</div>`;
+  const featGrid = document.createElement("div");
+  featGrid.className = "cards";
+
+  // similarity (featured)
+  const simCard = card("성공/실패 유사도", "임베딩 + LLM 분석", `
+    <div class="headline">${sigDot(r.similarity.signal)}${r.similarity.headline}</div>
+    <div class="narrative">${r.similarity.narrative}</div>
+    ${metaList(r.similarity.meta)}
+  `);
+  simCard.classList.add("featured-card");
+  featGrid.appendChild(simCard);
+
+  // chasm (featured, with chart)
+  const max = Math.max(...r.chasm.chart);
+  const bars = r.chasm.chart.map((v, i) => `<div class="bar ${i === r.chasm.peakIdx ? 'peak' : ''}" style="height:${(v/max*100).toFixed(0)}%"></div>`).join("");
+  const chasmCard = card("캐즘 (Trends + LLM 해석)", "Google Trends + LLM", `
+    <div class="headline">${sigDot(r.chasm.signal)}${r.chasm.headline}</div>
+    <div class="narrative">${r.chasm.narrative}</div>
+    <div class="chart">${bars}</div>
+  `);
+  chasmCard.classList.add("featured-card");
+  featGrid.appendChild(chasmCard);
+
+  featured.appendChild(featGrid);
+  root.appendChild(featured);
+
+  // ── 검증 가설 분해 (집중 분석 아래로 이동) ──
+  const hypBlock = document.createElement("div");
+  hypBlock.className = "hypotheses fade-in";
+  hypBlock.innerHTML = `
+    <h3>검증 가설 분해 (LLM)</h3>
+    <div class="hint">사용자 텍스트 → LLM이 검증 가능한 가설로 분해 → YC 데이터로 입증/반박.</div>
+  ` + r.hypotheses.map(h => `
+    <div class="hyp">
+      <div class="h-title">
+        <span class="h-verdict ${h.verdict}">${h.verdict === 'confirm' ? '입증' : h.verdict === 'refute' ? '반박' : '혼재'}</span>
+        ${h.title}
+      </div>
+      <div style="color:var(--muted); font-size:12px;">${h.narrative}</div>
+      ${h.evidence.map(e => `<div class="evidence"><span class="co-name">${e.co}</span> · ${e.note}</div>`).join("")}
+    </div>
+  `).join("");
+  root.appendChild(hypBlock);
+
+  // ── 그 외 분석 카드 ──
+  const cards = document.createElement("div");
+  cards.className = "cards fade-in";
+
+  // competitors
+  cards.appendChild(card("경쟁사 분석", "LLM이 차별화 포인트 제시", `
+    <div class="headline">${sigDot(r.competitors.signal)}${r.competitors.headline}</div>
+    <div class="narrative">${r.competitors.narrative}</div>
+    ${metaList(r.competitors.meta)}
+  `));
+
+  // profitability
+  cards.appendChild(card("수익성", "LLM이 가격 추천", `
+    <div class="headline">${sigDot(r.profitability.signal)}${r.profitability.headline}</div>
+    <div class="narrative">${r.profitability.narrative}</div>
+    ${metaList(r.profitability.meta)}
+  `));
+
+  // market size
+  cards.appendChild(card("시장 규모", "통계청 + LLM 추정", `
+    <div class="headline">${sigDot(r.marketSize.signal)}${r.marketSize.headline}</div>
+    <div class="narrative">${r.marketSize.narrative}</div>
+    ${metaList(r.marketSize.meta)}
+  `));
+
+  // policy — 별도 메뉴 분리. 결과에선 프리뷰만, 상세는 #policy로 이동
+  const topPick = r.policy.items[0];
+  cards.appendChild(card("K-Startup 정책 매칭", "별도 메뉴 →", `
+    <div class="headline">${sigDot(r.policy.signal)}${r.policy.headline}</div>
+    <div class="narrative">${r.policy.narrative}</div>
+    <div class="policy-preview">
+      매칭된 정책 <span class="top-pick">${r.policy.items.length}건</span> ·
+      최우선 <span class="top-pick">${topPick.name}</span> (<span style="color:var(--green); font-weight:600">${topPick.amt}</span>)
+    </div>
+    <a href="#policy" class="policy-cta">정책 매칭 상세 페이지 열기 →</a>
+  `));
+
+  // guide — 별도 메뉴 분리. 결과에선 프리뷰만, 상세는 #guide 뷰로 이동
+  cards.appendChild(card("실행 가이드 + WBS", "별도 메뉴 →", `
+    <div class="headline">${sigDot(r.guide.signal)}${r.guide.headline}</div>
+    <div class="narrative">${r.guide.narrative}</div>
+    <div class="policy-preview">
+      <span class="top-pick">16주 · ${r.guide.wbs.length}단계</span> 로드맵 ·
+      학습 자료 <span class="top-pick">${r.guide.resources.length}종</span> ·
+      기술 스택 <span class="top-pick">${r.guide.stack.length}개</span>
+    </div>
+    <a href="#guide" class="policy-cta">실행 가이드로 넘어가기 →</a>
+  `));
+
+  root.appendChild(cards);
+}
+
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("go");
+  btn.disabled = true;
+  $("status").textContent = "";
+  $("results").innerHTML = "";
+  try {
+    await runPipeline();
+    await sleep(200);
+    renderResults(MOCK_RESULT);
+    $("status").textContent = "완료 (모킹 — 실제 호출 없음)";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ===== 정책 매칭 뷰 (별도 메뉴 흉내) =====
+const POLICIES = [
+  { fit: "green", name: "TIPS 핀테크 트랙 2026", org: "중소벤처기업부 · 한국엔젤투자협회",
+    amt: "최대 5억원 (R&D + 창업사업화)", dday: "D-42", period: "~2026.07.07",
+    reqs: ["청년(39세 이하)", "법인 설립 7년 이내", "기술 기반"],
+    why: "Investing 도메인 + 자동화·임베딩 기술 묘사에서 'R&D 기반 핀테크' 트랙과 매칭 (가중치 0.81)",
+    apply: "k-startup.go.kr/tips" },
+  { fit: "green", name: "혁신금융서비스 지정 (금융규제 샌드박스)", org: "금융위원회 · 금융감독원",
+    amt: "전자금융업·투자중개업 라이선스 한시 면제", dday: "상시", period: "수시 접수",
+    reqs: ["기존 규제와 충돌하는 금융 서비스", "소비자 보호 방안 제출"],
+    why: "잔돈 자동 매수 = 투자중개업 라이선스 충돌. 샌드박스로 우회 가능 (선례 6건)",
+    apply: "sandbox.fintech.or.kr" },
+  { fit: "green", name: "예비창업패키지 (청년)", org: "중소벤처기업부 · 창업진흥원",
+    amt: "최대 1억원 (사업화 자금)", dday: "D-18", period: "~2026.06.13",
+    reqs: ["창업 경험 없음", "만 39세 이하", "예비창업자"],
+    why: "MVP 기획 단계 + 청년 + 미창업 매칭. 시드 직전 자금 격차 메우기 좋음",
+    apply: "k-startup.go.kr/yc" },
+  { fit: "green", name: "청년창업사관학교 14기", org: "중소벤처기업부 · 중소벤처기업진흥공단",
+    amt: "최대 1억원 + 1년 입주 + 멘토링", dday: "D-61", period: "~2026.07.26",
+    reqs: ["만 39세 이하", "창업 3년 이내", "전일 입주 가능"],
+    why: "단계·연령 매칭. 핀테크 특화 멘토 풀(전 토스·뱅크샐러드 PM 포함) 있음",
+    apply: "start.kosmes.or.kr" },
+  { fit: "yellow", name: "디지털금융 규제 샌드박스 2년 특례", org: "금융위원회",
+    amt: "전자금융업 등록 2년 유예", dday: "상시", period: "수시 접수",
+    reqs: ["디지털 금융 신서비스", "소비자 보호 체계"],
+    why: "혁신금융서비스와 중복 가능. 둘 중 하나 선택 권장 (병행 신청 시 심사 지연)",
+    apply: "fintech.or.kr" },
+  { fit: "yellow", name: "K-STARTUP 글로벌 진출 패키지", org: "중소벤처기업부 · 창업진흥원",
+    amt: "최대 1.5억원 + 해외 액셀러레이팅", dday: "D-94", period: "~2026.08.28",
+    reqs: ["창업 7년 이내", "해외 진출 계획서", "영문 IR"],
+    why: "vision 결과의 '글로벌 동시 진출 권장'과 정렬. 단 MVP 후 신청이 일반적 (현재 단계 다소 이름)",
+    apply: "k-startup.go.kr/global" },
+  { fit: "yellow", name: "핀테크 활성화 지원사업", org: "한국핀테크지원센터",
+    amt: "최대 5천만원 + 사무공간 무상", dday: "D-7", period: "~2026.06.02",
+    reqs: ["핀테크 분야 창업 3년 이내", "서울 소재"],
+    why: "분야 직접 매칭. 단 금액 작고 마감 임박 — 우선순위 낮음",
+    apply: "fintech.or.kr/support" },
+  { fit: "red", name: "K-Global Star · ICT 글로벌 트랙", org: "과학기술정보통신부 · NIPA",
+    amt: "최대 3억원", dday: "D-23", period: "~2026.06.18",
+    reqs: ["ICT 분야 · AI/클라우드/메타버스", "수출 실적 또는 글로벌 진출 계획"],
+    why: "핀테크는 ICT 분야 인정 범위 밖. 매칭 점수 0.31 — 시간 낭비 가능성",
+    apply: "k-global.nipa.or.kr" },
+];
+
+function renderPolicyGrid() {
+  const grid = $("policyGrid");
+  if (!grid || grid.dataset.rendered) return;
+  grid.dataset.rendered = "1";
+  grid.innerHTML = POLICIES.map(p => {
+    const ddaySoon = p.dday.startsWith("D-") && parseInt(p.dday.slice(2)) <= 30;
+    const fitLabel = p.fit === "green" ? "높음" : p.fit === "yellow" ? "보통" : "낮음";
+    return `
+      <div class="pcard">
+        <div class="row1">
+          <span class="fit ${p.fit}">${fitLabel}</span>
+          <div style="flex:1">
+            <div class="name">${p.name}</div>
+            <div class="org">${p.org}</div>
+            <div class="req">${p.reqs.map(r => `<span class="tag">${r}</span>`).join("")}</div>
+          </div>
+        </div>
+        <div class="meta">
+          <div><div class="k">지원 내용</div><div class="v amt">${p.amt}</div></div>
+          <div><div class="k">모집 기간</div><div class="v dday ${ddaySoon ? 'soon' : ''}">${p.dday} · ${p.period}</div></div>
+          <div><div class="k">신청 사이트</div><div class="v" style="font-size:12px; color:var(--primary)">${p.apply}</div></div>
+        </div>
+        <div class="reason"><span class="why">매칭 이유</span>${p.why}</div>
+        <div class="actions">
+          <button class="apply" onclick="alert('모킹입니다 — 실제 신청 페이지 연동은 후속 작업'); return false;">신청 사이트로 이동 →</button>
+          <button class="save" onclick="this.textContent = this.textContent.includes('저장됨') ? '★ 저장' : '✓ 저장됨'">★ 저장</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderGuideDetail() {
+  const g = MOCK_RESULT.guide;
+  const diffLabel = { low: "난이도 낮음", mid: "난이도 보통", high: "난이도 높음" };
+  const lead = $("guideLead");
+  if (lead) lead.textContent = g.narrative;
+
+  const wbs = $("guideWbs");
+  if (wbs && !wbs.dataset.rendered) {
+    wbs.dataset.rendered = "1";
+    wbs.innerHTML = g.wbs.map(w => `
+      <div class="tl-item">
+        <div class="tl-week">${w.w}</div>
+        <div class="tl-body">
+          <div class="tl-task">${w.t}</div>
+          <span class="diff ${w.d}">${diffLabel[w.d]}</span>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  const res = $("guideResources");
+  if (res && !res.dataset.rendered) {
+    res.dataset.rendered = "1";
+    res.innerHTML = g.resources.map(r => `
+      <div class="res-item"><div class="res-t">${r.t}</div><div class="res-src">${r.src}</div></div>
+    `).join("");
+  }
+
+  const stack = $("guideStack");
+  if (stack && !stack.dataset.rendered) {
+    stack.dataset.rendered = "1";
+    stack.innerHTML = g.stack.map(s => `<span class="stack-chip">${s}</span>`).join("");
+  }
+}
+
+function applyRoute() {
+  const hash = location.hash;
+  const isPolicy = hash === "#policy";
+  const isGuide = hash === "#guide";
+  const isMain = !isPolicy && !isGuide;
+  $("intro-main").classList.toggle("hidden", !isMain);
+  $("view-main").classList.toggle("hidden", !isMain);
+  $("view-policy").classList.toggle("hidden", !isPolicy);
+  $("view-guide").classList.toggle("hidden", !isGuide);
+  if (isPolicy) renderPolicyGrid();
+  if (isGuide) renderGuideDetail();
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", applyRoute);
+applyRoute();
+</script>
 </body>
 </html>
