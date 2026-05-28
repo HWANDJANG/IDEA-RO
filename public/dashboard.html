@@ -2307,6 +2307,25 @@
   .plan-cta.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .plan-cta.primary:hover { background: #BF4715; }
 
+  /* 카드 선택 (내 플랜에 담기) */
+  .plan-card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft), 0 1px 2px rgba(26,23,20,.03);
+  }
+  .plan-pick-btn {
+    padding: 8px 14px; border-radius: 9px;
+    background: var(--card); color: var(--accent);
+    border: 1.5px dashed var(--accent);
+    font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 5px;
+    transition: background 0.12s, color 0.12s, border-style 0.12s;
+  }
+  .plan-pick-btn:hover { background: var(--accent-soft); }
+  .plan-card.selected .plan-pick-btn {
+    background: var(--accent); color: #fff; border: 1.5px solid var(--accent);
+  }
+  .plan-card.selected .plan-pick-btn:hover { background: #BF4715; }
+
   /* ─── 통합 타임라인 (Step 3) ─── */
   .plan-timeline-wrap {
     margin-top: 22px; padding: 20px 22px;
@@ -4133,6 +4152,11 @@ function toggleBrowseFav(id) {
 // ─── 맞춤 플랜 (/api/plan) ───────────────────────────────────────────
 let _planDebounceTimer = null;
 
+// 사용자가 "내 플랜에 담기" 한 공고 id 집합. 페이지 새로고침 전까지 유지.
+const _planPicked = new Set();
+// 현재 표시 중인 plan 응답 캐시 (담기 토글 시 타임라인 재렌더용)
+let _planLast = null;
+
 function _planWeightsFromUI() {
   return {
     amount:  (parseInt(document.getElementById("w-amount").value, 10)  / 100),
@@ -4220,23 +4244,45 @@ function renderPlan(plan) {
     return;
   }
 
+  _planLast = plan;
+  // 새 추천 응답이 들어왔으니 현재 추천 목록에 없는 picked id 는 제거
+  const validIds = new Set(plan.recommendations.map(r => r.announcement_id));
+  for (const id of Array.from(_planPicked)) if (!validIds.has(id)) _planPicked.delete(id);
+
   body.innerHTML =
     `<div class="plan-cards">` + plan.recommendations.map((r, i) =>
       _renderPlanCard(r, i + 1)).join("") + `</div>` +
-    _renderPlanTimeline(plan);
+    `<div id="plan-timeline-mount">` + _renderPlanTimeline(plan) + `</div>`;
+}
 
-  // 타임라인 렌더 후 캐시 (캘린더 등록 시 사용)
-  window._planTimelineEvents = _buildPlanTimeline(plan);
+// 카드의 "담기" 버튼 클릭 → 선택 토글 + 타임라인 즉시 재렌더
+function togglePlanPick(id) {
+  if (_planPicked.has(id)) _planPicked.delete(id);
+  else _planPicked.add(id);
+  // 카드 자체 클래스 토글
+  const card = document.getElementById(`plan-card-${id}`);
+  if (card) card.classList.toggle("selected", _planPicked.has(id));
+  // 버튼 라벨 갱신
+  const btn = document.getElementById(`plan-pick-${id}`);
+  if (btn) btn.innerHTML = _planPicked.has(id) ? "✓ 담음" : "+ 내 플랜에 담기";
+  // 타임라인 재렌더 (선택된 공고만)
+  if (_planLast) {
+    const mount = document.getElementById("plan-timeline-mount");
+    if (mount) mount.innerHTML = _renderPlanTimeline(_planLast);
+  }
 }
 
 // ─── 통합 타임라인 (Step 3) ─────────────────────────────────────────
-// 모든 추천의 발급 태스크 + 신청 마감을 시간순 통합. 같은 서류는 dedup.
+// 사용자가 "담은" 공고들의 발급 태스크 + 신청 마감만 시간순 통합. 같은 서류는 dedup.
 function _buildPlanTimeline(plan) {
   const today = new Date(); today.setHours(0,0,0,0);
   const items = [];
 
+  // 사용자가 "담은" 공고만 대상
+  const picked = (plan.recommendations || []).filter(r => _planPicked.has(r.announcement_id));
+
   // 1) 신청 마감 이벤트 (공고당 1개)
-  for (const r of (plan.recommendations || [])) {
+  for (const r of picked) {
     if (!r.end_date) continue;
     const due = (r.end_date || "").slice(0, 10);
     if (!due) continue;
@@ -4254,7 +4300,7 @@ function _buildPlanTimeline(plan) {
 
   // 2) 발급 태스크 — 같은 서류명은 가장 빠른 due_date 로 dedup
   const taskMap = new Map();  // key=서류명, val={due, earliest, priority, related:[]}
-  for (const r of (plan.recommendations || [])) {
+  for (const r of picked) {
     for (const t of (r.issue_tasks || [])) {
       if (!t || !t.task) continue;
       const k = t.task;
@@ -4308,7 +4354,29 @@ function _buildPlanTimeline(plan) {
 }
 
 function _renderPlanTimeline(plan) {
+  const pickedCount = (plan.recommendations || []).filter(r => _planPicked.has(r.announcement_id)).length;
   const items = _buildPlanTimeline(plan);
+  window._planTimelineEvents = items;  // 캘린더 등록 시 사용
+
+  // 빈 상태: 아직 공고를 담지 않음
+  if (pickedCount === 0) {
+    return `
+      <div class="plan-timeline-wrap">
+        <div class="plan-tl-head">
+          <div>
+            <div class="plan-tl-title">📅 내 액션 플랜</div>
+            <div class="plan-tl-sub">위 추천 공고 중 마음에 드는 걸 <b>"+ 내 플랜에 담기"</b> 로 골라보세요. 담은 공고들의 발급 일정과 마감을 시간순으로 모아드릴게요.</div>
+          </div>
+        </div>
+        <div class="plan-empty-state" style="margin-top:14px">
+          <div class="icon">🗂️</div>
+          <div class="ttl">담은 공고가 없습니다</div>
+          <div class="sub">추천 카드의 <b>+ 내 플랜에 담기</b> 버튼을 눌러보세요.</div>
+        </div>
+      </div>
+    `;
+  }
+
   if (!items.length) return "";
   const itemsHtml = items.map((it, i) => {
     const isMulti = (it.announcement_titles || []).length > 1;
@@ -4336,8 +4404,8 @@ function _renderPlanTimeline(plan) {
     <div class="plan-timeline-wrap">
       <div class="plan-tl-head">
         <div>
-          <div class="plan-tl-title">📅 통합 액션 타임라인</div>
-          <div class="plan-tl-sub">위 ${plan.recommendations.length}개 추천의 발급 태스크와 신청 마감을 시간순으로 모았습니다. 같은 서류는 가장 빠른 일정으로 묶었어요.</div>
+          <div class="plan-tl-title">📅 내 액션 플랜 <span style="color:var(--accent); font-size:14px">· 담은 공고 ${pickedCount}건</span></div>
+          <div class="plan-tl-sub">담은 공고들의 발급 태스크와 신청 마감을 시간순으로 모았어요. 같은 서류는 가장 빠른 일정으로 묶었습니다.</div>
         </div>
         <div class="plan-tl-count">선택 <b id="plan-tl-sel-count">${items.length}</b> / 전체 ${items.length}건</div>
       </div>
@@ -4445,8 +4513,9 @@ function _renderPlanCard(r, rank) {
     </div>
   ` : "";
 
+  const picked = _planPicked.has(r.announcement_id);
   return `
-    <div class="plan-card">
+    <div class="plan-card ${picked ? 'selected' : ''}" id="plan-card-${r.announcement_id}">
       <div class="plan-card-head">
         <div class="plan-rank r${rank}">${rank}</div>
         <div class="plan-title-wrap">
@@ -4483,7 +4552,8 @@ function _renderPlanCard(r, rank) {
       ${tasksBlock}
 
       <div class="plan-cta-row">
-        ${r.detail_url ? `<a class="plan-cta primary" href="${escapeHtml(r.detail_url)}" target="_blank" rel="noopener">원문 공고 →</a>` : ""}
+        <button class="plan-pick-btn" id="plan-pick-${r.announcement_id}" onclick="togglePlanPick(${r.announcement_id})">${picked ? '✓ 담음' : '+ 내 플랜에 담기'}</button>
+        ${r.detail_url ? `<a class="plan-cta" href="${escapeHtml(r.detail_url)}" target="_blank" rel="noopener">원문 공고 →</a>` : ""}
         <button class="plan-cta" onclick="(function(){ const m=document.querySelector('.tab-btn[data-tab=\\'match\\']'); if(m) m.click(); })()">매칭 탭에서 보기</button>
       </div>
     </div>
