@@ -195,6 +195,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_schedule_ics(folder_id_str)
         elif path == "/api/schedule/all":
             self._handle_schedule_all()
+        elif path == "/api/plan":
+            self._handle_plan(parsed.query)
         elif path == "/api/auth/me":
             self._handle_auth_me()
         elif path == "/api/profile":
@@ -552,6 +554,24 @@ class Handler(BaseHTTPRequestHandler):
                 raw_meta = None
         result["profile_fit"] = compute_profile_fit(profile, raw_meta)
         self._send_json(result)
+
+    def _handle_plan(self, query: str) -> None:
+        """사용자 맞춤 추천 + 액션 플랜 (Top N 공고 + 부족 서류 + 발급 태스크)."""
+        from planner.planner import compose_action_plan
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        qs = parse_qs(query)
+        try:
+            top_n = max(1, min(int((qs.get("top_n") or ["5"])[0]), 20))
+        except ValueError:
+            top_n = 5
+        try:
+            plan = compose_action_plan(user_id, top_n=top_n)
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"plan 생성 실패: {e}"}, status=500)
+            return
+        self._send_json(plan)
 
     def _load_profile_for_user(self) -> dict | None:
         """현재 세션 사용자의 프로필을 dict 로 반환. 비로그인 시 None."""
