@@ -168,6 +168,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_file(STATIC_DIR / "onboarding.html", "text/html; charset=utf-8")
         elif path == "/ideas":
             self._send_file(STATIC_DIR / "ideas.html", "text/html; charset=utf-8")
+        elif path == "/privacy":
+            self._send_file(STATIC_DIR / "privacy.html", "text/html; charset=utf-8")
+        elif path == "/terms":
+            self._send_file(STATIC_DIR / "terms.html", "text/html; charset=utf-8")
         elif path == "/api/documents":
             self._send_json({
                 "documents": [{"key": k, **v} for k, v in DOCUMENT_MASTER.items()],
