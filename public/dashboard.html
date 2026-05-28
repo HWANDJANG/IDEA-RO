@@ -2307,6 +2307,84 @@
   .plan-cta.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .plan-cta.primary:hover { background: #BF4715; }
 
+  /* ─── 통합 타임라인 (Step 3) ─── */
+  .plan-timeline-wrap {
+    margin-top: 22px; padding: 20px 22px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.03);
+  }
+  .plan-tl-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 6px;
+  }
+  .plan-tl-title {
+    font-family: var(--serif-ko); font-weight: 600; font-size: 18px;
+    letter-spacing: -0.01em; color: var(--text);
+  }
+  .plan-tl-sub {
+    color: var(--muted); font-size: 12.5px; margin-bottom: 16px;
+  }
+  .plan-tl-controls {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    margin-bottom: 14px;
+  }
+  .plan-tl-btn {
+    padding: 8px 14px; border-radius: 9px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+    border: 1px solid var(--border-strong); background: var(--card); color: var(--text);
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .plan-tl-btn:hover { background: var(--bg-subtle); border-color: var(--accent); color: var(--accent); }
+  .plan-tl-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .plan-tl-btn.primary:hover { background: #BF4715; }
+  .plan-tl-btn.naver { background: #03C75A; color: #fff; border-color: #03C75A; }
+  .plan-tl-btn.naver:hover { background: #02A94C; }
+  .plan-tl-count {
+    margin-left: auto; color: var(--muted); font-size: 12px;
+  }
+  .plan-tl-count b { color: var(--text); font-weight: 600; }
+
+  .plan-tl-list { display: flex; flex-direction: column; gap: 8px; }
+  .plan-tl-item {
+    display: grid; grid-template-columns: auto 84px 1fr auto; gap: 12px;
+    align-items: center; padding: 11px 14px;
+    background: var(--bg-subtle); border-radius: 10px;
+    border-left: 3px solid transparent;
+  }
+  .plan-tl-item.urgent { border-left-color: #C0341B; background: #FCE6E2; }
+  .plan-tl-item.imm    { border-left-color: #B45309; background: #FFF1DC; }
+  .plan-tl-item.normal { border-left-color: var(--primary, #4A6BC9); }
+  .plan-tl-item input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
+  .plan-tl-date {
+    font-family: var(--serif-en); font-size: 13.5px; color: var(--text); font-weight: 600;
+    text-align: center;
+  }
+  .plan-tl-date .dd { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .plan-tl-item.urgent .plan-tl-date .dd { color: #C0341B; }
+  .plan-tl-item.imm    .plan-tl-date .dd { color: #B45309; }
+  .plan-tl-body { min-width: 0; }
+  .plan-tl-icon { font-size: 14px; margin-right: 5px; }
+  .plan-tl-name {
+    font-size: 13.5px; font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .plan-tl-related {
+    margin-top: 2px; font-size: 11.5px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .plan-tl-related .related-count {
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 7px; border-radius: 999px; font-weight: 700; font-size: 10.5px;
+    margin-right: 5px;
+  }
+  .plan-tl-kind {
+    font-size: 10.5px; padding: 3px 10px; border-radius: 999px;
+    font-weight: 700; flex-shrink: 0;
+  }
+  .plan-tl-kind.issue { background: var(--bg-accent); color: var(--muted); }
+  .plan-tl-kind.apply { background: var(--primary-soft, #DCE3F4); color: var(--primary, #4A6BC9); }
+
   /* 빈 상태 */
   .plan-empty-state {
     padding: 40px 20px; text-align: center;
@@ -4142,8 +4220,178 @@ function renderPlan(plan) {
     return;
   }
 
-  body.innerHTML = `<div class="plan-cards">` + plan.recommendations.map((r, i) =>
-    _renderPlanCard(r, i + 1)).join("") + `</div>`;
+  body.innerHTML =
+    `<div class="plan-cards">` + plan.recommendations.map((r, i) =>
+      _renderPlanCard(r, i + 1)).join("") + `</div>` +
+    _renderPlanTimeline(plan);
+
+  // 타임라인 렌더 후 캐시 (캘린더 등록 시 사용)
+  window._planTimelineEvents = _buildPlanTimeline(plan);
+}
+
+// ─── 통합 타임라인 (Step 3) ─────────────────────────────────────────
+// 모든 추천의 발급 태스크 + 신청 마감을 시간순 통합. 같은 서류는 dedup.
+function _buildPlanTimeline(plan) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const items = [];
+
+  // 1) 신청 마감 이벤트 (공고당 1개)
+  for (const r of (plan.recommendations || [])) {
+    if (!r.end_date) continue;
+    const due = (r.end_date || "").slice(0, 10);
+    if (!due) continue;
+    items.push({
+      kind: "apply",
+      date: due,
+      name: `${r.title} 신청 마감`,
+      announcement_titles: [r.title],
+      detail_url: r.detail_url,
+      // Calendar event payload
+      summary: `📅 [신청 마감] ${r.title}`,
+      description: `공고: ${r.title}\n출처: ${r.source_name || ''}\n부서: ${r.department || ''}\n${r.detail_url ? '원문: ' + r.detail_url : ''}`,
+    });
+  }
+
+  // 2) 발급 태스크 — 같은 서류명은 가장 빠른 due_date 로 dedup
+  const taskMap = new Map();  // key=서류명, val={due, earliest, priority, related:[]}
+  for (const r of (plan.recommendations || [])) {
+    for (const t of (r.issue_tasks || [])) {
+      if (!t || !t.task) continue;
+      const k = t.task;
+      const due = (t.due_date || "").slice(0, 10);
+      if (!due) continue;
+      const cur = taskMap.get(k);
+      if (!cur) {
+        taskMap.set(k, {
+          due,
+          earliest: (t.earliest_date || "").slice(0, 10),
+          priority: t.priority || "normal",
+          reason: t.reason || "",
+          related: [r.title],
+        });
+      } else {
+        // 더 이른 due 우선
+        if (due < cur.due) { cur.due = due; cur.earliest = (t.earliest_date || "").slice(0, 10); }
+        if (t.priority === "urgent") cur.priority = "urgent";
+        if (cur.related.indexOf(r.title) < 0) cur.related.push(r.title);
+      }
+    }
+  }
+  for (const [name, v] of taskMap.entries()) {
+    items.push({
+      kind: "issue",
+      date: v.due,
+      name,
+      priority: v.priority,
+      announcement_titles: v.related,
+      summary: `📋 [${v.priority === 'urgent' ? '긴급' : '발급'}] ${name}`,
+      description:
+        `발급일까지: ~${v.due}\n` +
+        (v.earliest ? `착수 가능: ${v.earliest}\n` : '') +
+        `필요 공고 (${v.related.length}건):\n` +
+        v.related.map(t => `  - ${t}`).join("\n") +
+        (v.reason ? `\n\n${v.reason}` : ''),
+    });
+  }
+
+  // 3) 시간순 정렬 (오늘 ≤ 미래)
+  items.sort((a, b) => a.date.localeCompare(b.date));
+
+  // 각 항목에 days_left, 등급 부여
+  for (const it of items) {
+    const d = new Date(it.date);
+    const days = Math.floor((d - today) / 86400000);
+    it.days_left = days;
+    it.urgency = days <= 7 ? "urgent" : (days <= 14 ? "imm" : "normal");
+  }
+  return items;
+}
+
+function _renderPlanTimeline(plan) {
+  const items = _buildPlanTimeline(plan);
+  if (!items.length) return "";
+  const itemsHtml = items.map((it, i) => {
+    const isMulti = (it.announcement_titles || []).length > 1;
+    const relText = isMulti
+      ? `<span class="related-count">${it.announcement_titles.length}개 공고</span>${escapeHtml(it.announcement_titles[0])} 외`
+      : escapeHtml((it.announcement_titles || [])[0] || "");
+    const ddText = it.days_left === 0 ? "오늘" :
+      it.days_left < 0 ? `D+${-it.days_left}` : `D-${it.days_left}`;
+    const icon = it.kind === "apply" ? "📅" : (it.priority === "urgent" ? "🔥" : "📋");
+    const kindLabel = it.kind === "apply" ? "신청 마감" : (it.priority === "urgent" ? "긴급 발급" : "서류 발급");
+    return `
+      <label class="plan-tl-item ${it.urgency}">
+        <input type="checkbox" data-tl-idx="${i}" checked onchange="_updatePlanSelCount()">
+        <div class="plan-tl-date">${escapeHtml(it.date.slice(5))}<div class="dd">${ddText}</div></div>
+        <div class="plan-tl-body">
+          <div class="plan-tl-name"><span class="plan-tl-icon">${icon}</span>${escapeHtml(it.name)}</div>
+          <div class="plan-tl-related">${relText}</div>
+        </div>
+        <span class="plan-tl-kind ${it.kind}">${kindLabel}</span>
+      </label>
+    `;
+  }).join("");
+
+  return `
+    <div class="plan-timeline-wrap">
+      <div class="plan-tl-head">
+        <div>
+          <div class="plan-tl-title">📅 통합 액션 타임라인</div>
+          <div class="plan-tl-sub">위 ${plan.recommendations.length}개 추천의 발급 태스크와 신청 마감을 시간순으로 모았습니다. 같은 서류는 가장 빠른 일정으로 묶었어요.</div>
+        </div>
+        <div class="plan-tl-count">선택 <b id="plan-tl-sel-count">${items.length}</b> / 전체 ${items.length}건</div>
+      </div>
+      <div class="plan-tl-controls">
+        <button class="plan-tl-btn" onclick="_planTlSelectAll(true)">전체 선택</button>
+        <button class="plan-tl-btn" onclick="_planTlSelectAll(false)">전체 해제</button>
+        <button class="plan-tl-btn" onclick="_planTlSelectKind('issue')">발급만</button>
+        <button class="plan-tl-btn" onclick="_planTlSelectKind('apply')">마감만</button>
+        <button class="plan-tl-btn primary" onclick="_planTlPush('google')">🗓️ Google 캘린더에 등록</button>
+        <button class="plan-tl-btn naver"   onclick="_planTlPush('naver')">N 네이버 캘린더에 등록</button>
+      </div>
+      <div class="plan-tl-list">${itemsHtml}</div>
+    </div>
+  `;
+}
+
+function _planTlSelectedIndices() {
+  return Array.from(document.querySelectorAll('#plan-body .plan-tl-item input[type="checkbox"]'))
+    .filter(c => c.checked)
+    .map(c => parseInt(c.dataset.tlIdx, 10));
+}
+
+function _updatePlanSelCount() {
+  const n = _planTlSelectedIndices().length;
+  const el = document.getElementById("plan-tl-sel-count");
+  if (el) el.textContent = n;
+}
+
+function _planTlSelectAll(on) {
+  document.querySelectorAll('#plan-body .plan-tl-item input[type="checkbox"]').forEach(c => { c.checked = on; });
+  _updatePlanSelCount();
+}
+
+function _planTlSelectKind(kind) {
+  const items = window._planTimelineEvents || [];
+  document.querySelectorAll('#plan-body .plan-tl-item input[type="checkbox"]').forEach(c => {
+    const idx = parseInt(c.dataset.tlIdx, 10);
+    c.checked = items[idx] && items[idx].kind === kind;
+  });
+  _updatePlanSelCount();
+}
+
+async function _planTlPush(provider) {
+  const items = window._planTimelineEvents || [];
+  const sel = _planTlSelectedIndices();
+  if (!sel.length) { alert("선택된 일정이 없습니다."); return; }
+  const events = sel.map(i => items[i]).filter(Boolean).map(it => ({
+    summary: it.summary,
+    description: it.description,
+    date_start: it.date,
+    date_end: it.date,
+  }));
+  // 기존 헬퍼 재사용
+  await _pushEventsToProvider(events, provider);
 }
 
 function _renderPlanCard(r, rank) {
