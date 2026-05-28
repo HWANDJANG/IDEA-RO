@@ -2130,6 +2130,60 @@
   }
   .plan-meta { color: var(--muted); font-size: 12.5px; }
   .plan-meta b { color: var(--text); font-weight: 600; }
+
+  /* 슬라이더 그룹 */
+  .plan-sliders {
+    background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 18px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 760px) { .plan-sliders { grid-template-columns: 1fr; gap: 12px; } }
+  .plan-slider { display: flex; flex-direction: column; gap: 5px; }
+  .plan-slider label {
+    font-size: 12.5px; font-weight: 600; color: var(--text);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .plan-slider .w-val {
+    font-family: var(--serif-en); font-size: 14px; color: var(--accent); font-weight: 600;
+  }
+  .plan-slider input[type="range"] {
+    width: 100%; accent-color: var(--accent); cursor: pointer;
+  }
+  .plan-slider-ends {
+    display: flex; justify-content: space-between;
+    color: var(--muted); font-size: 10.5px; opacity: 0.7;
+  }
+  .plan-presets {
+    grid-column: 1 / -1;
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    border-top: 1px dashed var(--border-strong); padding-top: 12px;
+  }
+  .plan-preset {
+    padding: 6px 14px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--border-strong);
+    color: var(--text); font-size: 12px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .plan-preset:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+  /* 카드 안 amount/effort 메타 */
+  .plan-amount-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+    background: var(--green-soft, #E4EDE2); color: var(--green, #3F7A4D);
+  }
+  .plan-effort-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+  }
+  .plan-effort-badge.low  { background: var(--green-soft, #E4EDE2); color: var(--green, #3F7A4D); }
+  .plan-effort-badge.mid  { background: var(--yellow-soft, #F3E8CE); color: var(--yellow, #B5862B); }
+  .plan-effort-badge.high { background: var(--red-soft, #F3DBD1); color: var(--red, #C0432A); }
+
   .plan-cards { display: flex; flex-direction: column; gap: 14px; }
   .plan-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 14px;
@@ -3344,6 +3398,29 @@
           <option value="10">Top 10</option>
         </select>
       </div>
+      <div class="plan-sliders">
+        <div class="plan-slider">
+          <label for="w-amount">💰 지원금 규모 중요도 <span class="w-val" id="w-amount-v">50</span></label>
+          <input type="range" id="w-amount" min="0" max="100" value="50" oninput="_onPlanWeightChange()">
+          <div class="plan-slider-ends"><span>무관</span><span>고액 위주</span></div>
+        </div>
+        <div class="plan-slider">
+          <label for="w-effort">⚡ 노력 회피 정도 <span class="w-val" id="w-effort-v">30</span></label>
+          <input type="range" id="w-effort" min="0" max="100" value="30" oninput="_onPlanWeightChange()">
+          <div class="plan-slider-ends"><span>노력 OK</span><span>쉬운 거 위주</span></div>
+        </div>
+        <div class="plan-slider">
+          <label for="w-urgency">⏰ 마감 임박 우선 <span class="w-val" id="w-urgency-v">50</span></label>
+          <input type="range" id="w-urgency" min="0" max="100" value="50" oninput="_onPlanWeightChange()">
+          <div class="plan-slider-ends"><span>무관</span><span>급한 거 우선</span></div>
+        </div>
+        <div class="plan-presets">
+          <button class="plan-preset" onclick="_applyPlanPreset(50,30,50)">균형</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(100,0,20)">💰 고액 위주</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(20,100,50)">⚡ 쉬운 거 위주</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(50,30,100)">⏰ 마감 우선</button>
+        </div>
+      </div>
       <div id="plan-body"><div class="empty">불러오는 중...</div></div>
     </div>
   </section>
@@ -3976,14 +4053,43 @@ function toggleBrowseFav(id) {
 }
 
 // ─── 맞춤 플랜 (/api/plan) ───────────────────────────────────────────
+let _planDebounceTimer = null;
+
+function _planWeightsFromUI() {
+  return {
+    amount:  (parseInt(document.getElementById("w-amount").value, 10)  / 100),
+    effort:  (parseInt(document.getElementById("w-effort").value, 10)  / 100),
+    urgency: (parseInt(document.getElementById("w-urgency").value, 10) / 100),
+  };
+}
+
+function _onPlanWeightChange() {
+  // 슬라이더 값 라벨 즉시 갱신
+  document.getElementById("w-amount-v").textContent  = document.getElementById("w-amount").value;
+  document.getElementById("w-effort-v").textContent  = document.getElementById("w-effort").value;
+  document.getElementById("w-urgency-v").textContent = document.getElementById("w-urgency").value;
+  // debounce 300ms 후 재호출
+  clearTimeout(_planDebounceTimer);
+  _planDebounceTimer = setTimeout(loadPlan, 300);
+}
+
+function _applyPlanPreset(amount, effort, urgency) {
+  document.getElementById("w-amount").value  = amount;
+  document.getElementById("w-effort").value  = effort;
+  document.getElementById("w-urgency").value = urgency;
+  _onPlanWeightChange();
+}
+
 async function loadPlan() {
   const body = document.getElementById("plan-body");
   const meta = document.getElementById("plan-meta");
   const topN = parseInt((document.getElementById("plan-topn") || {}).value || "5", 10);
-  body.innerHTML = `<div class="empty">매칭 계산 중... (수백 건 자격 비교)</div>`;
+  const w = _planWeightsFromUI();
+  body.innerHTML = `<div class="empty">매칭 계산 중...</div>`;
   meta.textContent = "";
   try {
-    const res = await fetch(`/api/plan?top_n=${topN}`);
+    const url = `/api/plan?top_n=${topN}&w_amount=${w.amount}&w_effort=${w.effort}&w_urgency=${w.urgency}`;
+    const res = await fetch(url);
     if (res.status === 401) {
       body.innerHTML = _planEmptyState("🔒", "로그인이 필요합니다",
         "맞춤 플랜은 본인의 프로필·보유 서류 기반으로 계산됩니다.",
@@ -4105,7 +4211,12 @@ function _renderPlanCard(r, rank) {
             <span>· ~${escapeHtml((r.end_date || '').slice(0,10))}</span>
             ${ddText ? `<span class="plan-dday ${dd}">${escapeHtml(ddText)}</span>` : ""}
             ${r.type?.label ? `<span class="plan-type-badge">${r.type.emoji || ''} ${escapeHtml(r.type.label)}</span>` : ""}
-            <span class="plan-score">점수 ${r.score_combined}</span>
+            ${r.signals?.amount_display ? `<span class="plan-amount-badge">💰 ${escapeHtml(r.signals.amount_display)}</span>` : ""}
+            ${r.signals?.effort_label ? (() => {
+              const lvl = r.signals.effort_label === "높음" ? "high" : (r.signals.effort_label === "중간" ? "mid" : "low");
+              return `<span class="plan-effort-badge ${lvl}" title="유형 + 필요 서류 ${r.signals.req_doc_count || 0}건 기반">⚙️ 노력 ${escapeHtml(r.signals.effort_label)}</span>`;
+            })() : ""}
+            <span class="plan-score" title="profile ${r.signals?.profile} + urgency ${r.signals?.urgency} + amount ${r.signals?.amount} - effort ${r.signals?.effort}">점수 ${r.score_combined}</span>
           </div>
         </div>
       </div>

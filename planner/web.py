@@ -556,18 +556,37 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(result)
 
     def _handle_plan(self, query: str) -> None:
-        """사용자 맞춤 추천 + 액션 플랜 (Top N 공고 + 부족 서류 + 발급 태스크)."""
+        """사용자 맞춤 추천 + 액션 플랜 (Top N 공고 + 부족 서류 + 발급 태스크).
+
+        Query params:
+          top_n     : 1~20, default 5
+          w_amount  : 0~1, default 0.5 (지원금 규모 중요도)
+          w_effort  : 0~1, default 0.3 (노력 회피)
+          w_urgency : 0~1, default 0.5 (마감 임박 우선)
+        """
         from planner.planner import compose_action_plan
         user_id = self._require_user_id()
         if user_id is None:
             return
         qs = parse_qs(query)
+
+        def _f(key: str, default: float) -> float:
+            try:
+                return max(0.0, min(1.0, float((qs.get(key) or [str(default)])[0])))
+            except ValueError:
+                return default
+
         try:
             top_n = max(1, min(int((qs.get("top_n") or ["5"])[0]), 20))
         except ValueError:
             top_n = 5
+        weights = {
+            "amount":  _f("w_amount",  0.5),
+            "effort":  _f("w_effort",  0.3),
+            "urgency": _f("w_urgency", 0.5),
+        }
         try:
-            plan = compose_action_plan(user_id, top_n=top_n)
+            plan = compose_action_plan(user_id, top_n=top_n, weights=weights)
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"plan 생성 실패: {e}"}, status=500)
             return
