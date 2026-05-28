@@ -8,6 +8,7 @@ LLM 호출 없음 (Step 4 에서 추가 예정).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -103,6 +104,165 @@ def _effort_label(score: int) -> str:
     if score >= 20: return "높음"
     if score >= 12: return "중간"
     return "낮음"
+
+
+# ─── LLM Narrative — "왜 이 공고가 당신에게 맞는지" 한 줄 (Step 4) ──────
+
+_NARRATIVE_SYSTEM = """당신은 한국 정부 창업지원사업 추천 컨설턴트입니다.
+사용자 프로필과 추천 공고 후보들을 받으면, 각 공고가 왜 이 사용자에게 맞는지를 한 문장으로 요약합니다.
+
+엄격히 지켜야 할 규칙:
+1. 단정 금지: "베스트", "반드시 신청", "최고" 같은 표현 금지. 측면별 매칭 포인트만 짚으세요.
+2. 사용자 프로필의 구체적 요소를 인용하세요 (예: "예비창업자 트랙이 있어 0.2년 업력과 매칭").
+3. 가중치(amount/effort/urgency)를 고려해 왜 이 순위인지 자연스럽게 설명.
+   - amount 높으면: 지원금 규모 강조 (예: "지원금 최대 X원")
+   - effort 높으면: 노력이 낮다는 점 강조 (예: "필요 서류 N건으로 가벼움")
+   - urgency 높으면: 마감 임박 강조 (예: "D-X 안에 마감")
+4. 한 문장만. 한국어로 50~80자.
+5. 응답은 반드시 지정된 JSON 스키마에 맞아야 합니다."""
+
+_NARRATIVE_USER_TMPL = """## 사용자 프로필
+{profile_json}
+
+## 정렬 가중치 (0~1, 높을수록 중요)
+- 지원금 규모: {w_amount}
+- 노력 회피: {w_effort}
+- 마감 임박: {w_urgency}
+
+## 추천 후보 ({n}건, 위에서부터 1순위)
+{cards}
+
+위 각 후보에 대해 "왜 이 사용자에게 맞는지" 한 문장 요약을 만들어 주세요.
+"""
+
+_NARRATIVE_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "narratives": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "announcement_id": {"type": "integer"},
+                    "why": {"type": "string"},
+                },
+                "required": ["announcement_id", "why"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["narratives"],
+    "additionalProperties": False,
+}
+
+
+def _narrative_cache_key(user_id: int, ann_ids: list[int], weights: dict) -> str:
+    """user + 추천 조합 + 가중치 기반 캐시 키. 슬라이더 같은 조합 → 같은 키."""
+    parts = [str(user_id), ",".join(str(x) for x in sorted(ann_ids))]
+    parts.append(f"a{weights['amount']:.2f}e{weights['effort']:.2f}u{weights['urgency']:.2f}")
+    raw = "|".join(parts)
+    h = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"plan_narrative_{user_id}_{h}"
+
+
+def _profile_for_narrative(profile: Optional[dict]) -> dict:
+    """LLM 컨텍스트에 안전하게 보낼 프로필 (PII 최소화)."""
+    if not profile: return {}
+    keep = ("business_type", "establishment_date", "region", "industry", "founding_type", "company_name")
+    return {k: profile[k] for k in keep if k in profile and profile[k] not in (None, "")}
+
+
+def _card_for_narrative(r: dict) -> str:
+    """추천 1개를 LLM 입력용 한 줄로 압축."""
+    s = r.get("signals") or {}
+    parts = [
+        f"id={r['announcement_id']}",
+        f"제목={r.get('title', '')[:80]}",
+        f"유형={r.get('type', {}).get('label', '')}",
+        f"마감=D-{r.get('days_left')}",
+        f"지원금={s.get('amount_display') or '미상'}",
+        f"노력={s.get('effort_label')} (서류 {s.get('req_doc_count', 0)}건)",
+        f"자격={r.get('profile_fit', {}).get('score', 0)}점",
+    ]
+    return "- " + " | ".join(parts)
+
+
+def generate_recommendation_narratives(
+    user_id: int,
+    plan: dict,
+    *,
+    use_cache: bool = True,
+) -> dict:
+    """추천 공고들에 대해 LLM 한 줄 narrative 생성.
+
+    Returns: {"narratives": {ann_id: "...", ...}, "cached": bool, "count": int}
+    """
+    from .analyzer.llm.base import LLMError
+    from .analyzer.llm.registry import get_llm_provider
+    from .analyzer.storage import load_derived, save_derived
+
+    recs = plan.get("recommendations") or []
+    if not recs:
+        return {"narratives": {}, "cached": False, "count": 0}
+
+    weights = plan.get("weights") or {"amount": 0.5, "effort": 0.3, "urgency": 0.5}
+    ann_ids = [r["announcement_id"] for r in recs]
+    cache_key = _narrative_cache_key(user_id, ann_ids, weights)
+
+    if use_cache:
+        cached = load_derived(cache_key)
+        if cached and isinstance(cached, dict) and "narratives" in cached:
+            return {"narratives": cached["narratives"], "cached": True, "count": len(cached["narratives"])}
+
+    # LLM 호출용 프로필 — DB 에서 다시 로드
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        profile = _load_profile(conn, user_id)
+    finally:
+        conn.close()
+
+    profile_safe = _profile_for_narrative(profile)
+    user_msg = _NARRATIVE_USER_TMPL.format(
+        profile_json=json.dumps(profile_safe, ensure_ascii=False),
+        w_amount=weights["amount"],
+        w_effort=weights["effort"],
+        w_urgency=weights["urgency"],
+        n=len(recs),
+        cards="\n".join(_card_for_narrative(r) for r in recs),
+    )
+
+    provider = get_llm_provider()
+    try:
+        result = provider.complete(
+            system=_NARRATIVE_SYSTEM,
+            user=user_msg,
+            response_schema=_NARRATIVE_SCHEMA,
+            max_tokens=1200,
+        )
+    except LLMError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise LLMError(f"narrative 생성 실패: {e}") from e
+
+    if not isinstance(result, dict):
+        raise LLMError(f"narrative 응답 형식 오류: {type(result).__name__}")
+
+    items = result.get("narratives") or []
+    narratives: dict[int, str] = {}
+    for it in items:
+        try:
+            aid = int(it["announcement_id"])
+            why = str(it["why"]).strip()
+            if why:
+                narratives[aid] = why
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    # str key 로도 만들어서 캐시 (JSON 직렬화 시 int key 가 str 로 바뀌므로 통일)
+    save_derived(cache_key, {"narratives": {str(k): v for k, v in narratives.items()}, "ann_ids": ann_ids, "weights": weights})
+    # 응답은 str key (JSON 호환)
+    return {"narratives": {str(k): v for k, v in narratives.items()}, "cached": False, "count": len(narratives)}
 
 
 # compute_profile_fit / match_announcement 가 보는 핵심 필드만.

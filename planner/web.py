@@ -346,6 +346,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/match":
             self._handle_match()
             return
+        if path == "/api/plan/narrative":
+            self._handle_plan_narrative()
+            return
         if path == "/api/upload":
             self._handle_upload()
             return
@@ -591,6 +594,39 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": f"plan 생성 실패: {e}"}, status=500)
             return
         self._send_json(plan)
+
+    def _handle_plan_narrative(self) -> None:
+        """추천 카드들에 대해 LLM 한 줄 narrative 생성. 캐시 사용.
+
+        Body: { "plan": {... compose_action_plan 응답 그대로 ...} }
+        Response: { "narratives": {ann_id_str: "...", ...}, "cached": bool, "count": int }
+        """
+        from planner.planner import generate_recommendation_narratives
+        from planner.analyzer.llm.base import LLMError
+
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            self._send_json({"error": f"invalid JSON: {e}"}, status=400)
+            return
+        plan = data.get("plan") or {}
+        if not plan.get("recommendations"):
+            self._send_json({"narratives": {}, "cached": False, "count": 0})
+            return
+        try:
+            result = generate_recommendation_narratives(user_id, plan)
+        except LLMError as e:
+            self._send_json({"error": f"LLM 호출 실패: {e}"}, status=502)
+            return
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"narrative 생성 실패: {e}"}, status=500)
+            return
+        self._send_json(result)
 
     def _load_profile_for_user(self) -> dict | None:
         """현재 세션 사용자의 프로필을 dict 로 반환. 비로그인 시 None."""

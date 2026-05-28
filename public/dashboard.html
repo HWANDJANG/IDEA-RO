@@ -2307,6 +2307,30 @@
   .plan-cta.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .plan-cta.primary:hover { background: #BF4715; }
 
+  /* AI narrative 띠 — 카드 헤더 바로 아래 */
+  .plan-narrative {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 11px 14px;
+    background: linear-gradient(135deg, var(--accent-soft) 0%, #FDF1E8 100%);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 9px 9px 0;
+    font-size: 13px; line-height: 1.55; color: var(--text);
+    animation: planNarrativeIn .4s ease both;
+  }
+  .plan-narrative .nv-icon {
+    flex-shrink: 0; font-size: 14px;
+    color: var(--accent); font-weight: 700; line-height: 1.55;
+  }
+  .plan-narrative .nv-text { flex: 1; }
+  @keyframes planNarrativeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .plan-narrative.loading {
+    background: var(--bg-subtle); border-left-color: var(--border-strong);
+    color: var(--muted); font-style: italic; font-size: 12px;
+  }
+
   /* 카드 선택 (내 플랜에 담기) */
   .plan-card.selected {
     border-color: var(--accent);
@@ -4253,6 +4277,49 @@ function renderPlan(plan) {
     `<div class="plan-cards">` + plan.recommendations.map((r, i) =>
       _renderPlanCard(r, i + 1)).join("") + `</div>` +
     `<div id="plan-timeline-mount">` + _renderPlanTimeline(plan) + `</div>`;
+
+  // Step 4: narrative 백그라운드 호출 (non-blocking)
+  _fetchPlanNarrativesAsync(plan);
+}
+
+async function _fetchPlanNarrativesAsync(plan) {
+  // 각 카드에 loading placeholder 표시
+  for (const r of plan.recommendations) {
+    const slot = document.getElementById(`plan-narrative-${r.announcement_id}`);
+    if (slot) slot.innerHTML = `<div class="plan-narrative loading"><span class="nv-icon">✨</span><span class="nv-text">AI 추천 이유 분석 중...</span></div>`;
+  }
+  try {
+    const res = await fetch("/api/plan/narrative", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan }),
+    });
+    if (!res.ok) {
+      // narrative 실패는 silent — 핵심 기능 아님
+      for (const r of plan.recommendations) {
+        const slot = document.getElementById(`plan-narrative-${r.announcement_id}`);
+        if (slot) slot.innerHTML = "";
+      }
+      return;
+    }
+    const data = await res.json();
+    const narratives = data.narratives || {};
+    for (const r of plan.recommendations) {
+      const slot = document.getElementById(`plan-narrative-${r.announcement_id}`);
+      if (!slot) continue;
+      const why = narratives[String(r.announcement_id)];
+      if (why) {
+        slot.innerHTML = `<div class="plan-narrative" title="${data.cached ? '캐시 응답' : 'LLM 신규 생성'}"><span class="nv-icon">✨</span><span class="nv-text">${escapeHtml(why)}</span></div>`;
+      } else {
+        slot.innerHTML = "";
+      }
+    }
+  } catch (_e) {
+    for (const r of plan.recommendations) {
+      const slot = document.getElementById(`plan-narrative-${r.announcement_id}`);
+      if (slot) slot.innerHTML = "";
+    }
+  }
 }
 
 // 카드의 "담기" 버튼 클릭 → 선택 토글 + 타임라인 즉시 재렌더
@@ -4537,6 +4604,8 @@ function _renderPlanCard(r, rank) {
           </div>
         </div>
       </div>
+
+      <div id="plan-narrative-${r.announcement_id}"></div>
 
       ${fitChips ? `<div class="plan-section">
         <div class="plan-section-label">✓ 자격 매칭</div>
