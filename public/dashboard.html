@@ -2350,6 +2350,61 @@
   }
   .plan-card.selected .plan-pick-btn:hover { background: #BF4715; }
 
+  /* ─── Step 5: 액션 가이드 (이번 주 / 다음 주 할 일) ─── */
+  .plan-guide-wrap {
+    margin-top: 22px; padding: 22px 24px;
+    background: linear-gradient(135deg, #FDF8F2 0%, var(--accent-soft) 100%);
+    border: 1px solid var(--accent-soft); border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(26,23,20,.04);
+  }
+  .plan-guide-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 6px;
+  }
+  .plan-guide-title {
+    font-family: var(--serif-ko); font-weight: 600; font-size: 18px;
+    letter-spacing: -0.01em; color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .plan-guide-title .nv-icon { color: var(--accent); font-size: 16px; }
+  .plan-guide-sub { color: var(--muted); font-size: 12.5px; margin-bottom: 14px; }
+  .plan-guide-warn {
+    margin-bottom: 16px; padding: 12px 14px;
+    background: #FFFAE6; border-left: 3px solid #B5862B; border-radius: 0 9px 9px 0;
+    font-size: 13px; color: var(--text); display: flex; gap: 8px;
+  }
+  .plan-guide-warn .ic { color: #B5862B; font-weight: 700; flex-shrink: 0; }
+  .plan-guide-secs {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  .plan-guide-sec {
+    background: var(--card); border-radius: 10px; padding: 14px 16px;
+    border-top: 3px solid var(--border-strong);
+  }
+  .plan-guide-sec.high   { border-top-color: #C0341B; }
+  .plan-guide-sec.medium { border-top-color: #B45309; }
+  .plan-guide-sec.low    { border-top-color: var(--primary, #4A6BC9); }
+  .plan-guide-sec h4 {
+    margin: 0 0 10px; font-family: var(--serif-ko); font-size: 14px; font-weight: 700;
+    color: var(--text); display: flex; align-items: center; gap: 6px;
+  }
+  .plan-guide-sec h4 .prio {
+    font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    background: var(--bg-subtle); color: var(--muted);
+  }
+  .plan-guide-sec.high   h4 .prio { background: #FCE6E2; color: #C0341B; }
+  .plan-guide-sec.medium h4 .prio { background: #FFF1DC; color: #B45309; }
+  .plan-guide-sec.low    h4 .prio { background: var(--primary-soft, #DCE3F4); color: var(--primary, #4A6BC9); }
+  .plan-guide-sec ul { margin: 0; padding-left: 16px; }
+  .plan-guide-sec li {
+    margin-bottom: 6px; font-size: 13px; line-height: 1.55; color: var(--text);
+  }
+  .plan-guide-sec li::marker { color: var(--accent); }
+  .plan-guide-loading {
+    padding: 20px; text-align: center; color: var(--muted); font-size: 13px; font-style: italic;
+  }
+
   /* ─── 통합 타임라인 (Step 3) ─── */
   .plan-timeline-wrap {
     margin-top: 22px; padding: 20px 22px;
@@ -4276,10 +4331,13 @@ function renderPlan(plan) {
   body.innerHTML =
     `<div class="plan-cards">` + plan.recommendations.map((r, i) =>
       _renderPlanCard(r, i + 1)).join("") + `</div>` +
+    `<div id="plan-guide-mount"></div>` +
     `<div id="plan-timeline-mount">` + _renderPlanTimeline(plan) + `</div>`;
 
   // Step 4: narrative 백그라운드 호출 (non-blocking)
   _fetchPlanNarrativesAsync(plan);
+  // Step 5: 담은 공고가 이미 있으면 가이드도 호출 (재계산 후 잔존하는 picked 가 있을 수 있음)
+  if (_planPicked.size > 0) _fetchPlanGuideAsync();
 }
 
 async function _fetchPlanNarrativesAsync(plan) {
@@ -4323,6 +4381,8 @@ async function _fetchPlanNarrativesAsync(plan) {
 }
 
 // 카드의 "담기" 버튼 클릭 → 선택 토글 + 타임라인 즉시 재렌더
+let _planGuideDebounce = null;
+
 function togglePlanPick(id) {
   if (_planPicked.has(id)) _planPicked.delete(id);
   else _planPicked.add(id);
@@ -4337,6 +4397,68 @@ function togglePlanPick(id) {
     const mount = document.getElementById("plan-timeline-mount");
     if (mount) mount.innerHTML = _renderPlanTimeline(_planLast);
   }
+  // 가이드는 LLM 호출이라 debounce (담기/해제를 연속으로 누를 때 중복 호출 방지)
+  clearTimeout(_planGuideDebounce);
+  _planGuideDebounce = setTimeout(_fetchPlanGuideAsync, 700);
+}
+
+// Step 5: 담은 공고 기반 액션 가이드 (LLM)
+async function _fetchPlanGuideAsync() {
+  if (!_planLast) return;
+  const mount = document.getElementById("plan-guide-mount");
+  if (!mount) return;
+  const pickedIds = Array.from(_planPicked);
+  if (pickedIds.length === 0) {
+    mount.innerHTML = "";
+    return;
+  }
+  mount.innerHTML = `
+    <div class="plan-guide-wrap">
+      <div class="plan-guide-loading">✨ 담은 ${pickedIds.length}개 공고를 기반으로 액션 가이드 생성 중... (5~10초)</div>
+    </div>
+  `;
+  try {
+    const res = await fetch("/api/plan/guide", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: _planLast, picked_ids: pickedIds }),
+    });
+    if (!res.ok) {
+      mount.innerHTML = `<div class="plan-guide-wrap"><div class="plan-guide-loading">가이드 생성 실패</div></div>`;
+      return;
+    }
+    const data = await res.json();
+    mount.innerHTML = _renderPlanGuide(data, pickedIds.length);
+  } catch (_e) {
+    mount.innerHTML = "";
+  }
+}
+
+function _renderPlanGuide(g, pickedCount) {
+  const sections = g.sections || [];
+  if (!sections.length) return "";
+  const warnHtml = g.key_warning
+    ? `<div class="plan-guide-warn"><span class="ic">⚠️</span><span>${escapeHtml(g.key_warning)}</span></div>`
+    : "";
+  const prioLabel = { high: "긴급", medium: "중요", low: "여유" };
+  const secsHtml = sections.map(sec => `
+    <div class="plan-guide-sec ${escapeHtml(sec.priority || 'low')}">
+      <h4>${escapeHtml(sec.week_label || '')} <span class="prio">${escapeHtml(prioLabel[sec.priority] || sec.priority || '')}</span></h4>
+      <ul>${(sec.items || []).map(it => `<li>${escapeHtml(it)}</li>`).join("")}</ul>
+    </div>
+  `).join("");
+  return `
+    <div class="plan-guide-wrap">
+      <div class="plan-guide-head">
+        <div>
+          <div class="plan-guide-title"><span class="nv-icon">✨</span> AI 액션 가이드 · 담은 ${pickedCount}건 기반</div>
+          <div class="plan-guide-sub">담은 공고들을 종합해 시간 구간별로 무엇부터 해야 하는지 정리했어요.${g.cached ? ' (캐시)' : ''}</div>
+        </div>
+      </div>
+      ${warnHtml}
+      <div class="plan-guide-secs">${secsHtml}</div>
+    </div>
+  `;
 }
 
 // ─── 통합 타임라인 (Step 3) ─────────────────────────────────────────

@@ -349,6 +349,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/plan/narrative":
             self._handle_plan_narrative()
             return
+        if path == "/api/plan/guide":
+            self._handle_plan_guide()
+            return
         if path == "/api/upload":
             self._handle_upload()
             return
@@ -625,6 +628,45 @@ class Handler(BaseHTTPRequestHandler):
             return
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"narrative 생성 실패: {e}"}, status=500)
+            return
+        self._send_json(result)
+
+    def _handle_plan_guide(self) -> None:
+        """담은 공고들 기반 시간 구간별 액션 가이드.
+
+        Body: { "plan": {...}, "picked_ids": [1, 2, ...] }
+        Response: { "sections": [...], "key_warning": "...", "cached": bool, "picked_count": int }
+        """
+        from planner.planner import generate_action_guide
+        from planner.analyzer.llm.base import LLMError
+
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            self._send_json({"error": f"invalid JSON: {e}"}, status=400)
+            return
+        plan = data.get("plan") or {}
+        picked_ids = data.get("picked_ids") or []
+        if not isinstance(picked_ids, list):
+            self._send_json({"error": "picked_ids must be array"}, status=400)
+            return
+        try:
+            picked_ids_int = [int(x) for x in picked_ids]
+        except (TypeError, ValueError):
+            self._send_json({"error": "picked_ids must be integers"}, status=400)
+            return
+        try:
+            result = generate_action_guide(user_id, plan, picked_ids_int)
+        except LLMError as e:
+            self._send_json({"error": f"LLM 호출 실패: {e}"}, status=502)
+            return
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"가이드 생성 실패: {e}"}, status=500)
             return
         self._send_json(result)
 

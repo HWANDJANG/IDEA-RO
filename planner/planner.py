@@ -265,6 +265,181 @@ def generate_recommendation_narratives(
     return {"narratives": {str(k): v for k, v in narratives.items()}, "cached": False, "count": len(narratives)}
 
 
+# ─── Step 5: 담은 공고 기반 "이번 주 / 다음 주 할 일" 종합 가이드 ──────
+
+_GUIDE_SYSTEM = """당신은 한국 정부 창업지원사업 신청 컨설턴트입니다.
+사용자가 '내 플랜에 담은' 공고들의 마감일·필요 서류·발급 일정을 보고,
+시간 구간별로 "지금 무엇을 해야 하는지" 액션 가이드를 만듭니다.
+
+엄격히 지켜야 할 규칙:
+1. 행동 지향: "~하세요" / "~을 발급 신청" 같은 동사 명령형으로 작성.
+2. 시간 구간을 명확히 (이번 주 / 다음 주 / 2주 후 ~ 마감 등).
+3. 같은 서류가 여러 공고에 필요하면 한 번만 묶어서 언급.
+4. 가장 임박한 마감을 최우선으로.
+5. 사용자가 캘린더에 일정을 등록하는 단계는 이미 별도 버튼이 있으니 가이드에서 다시 언급하지 마세요.
+6. 항목당 한 줄, 한국어 30~80자.
+7. 응답은 반드시 지정된 JSON 스키마에 맞아야 합니다."""
+
+_GUIDE_USER_TMPL = """## 오늘 날짜
+{today}
+
+## 사용자 프로필
+{profile_json}
+
+## 담은 공고 ({n}건)
+{picked_cards}
+
+## 통합 발급 태스크 (같은 서류 dedup 된 상태)
+{task_lines}
+
+위 정보로 이번 주 / 다음 주 / 그 이후 무엇을 해야 하는지 시간 구간별 액션 가이드를 만들어 주세요.
+가장 중요한 한 가지 주의사항이 있으면 key_warning 에 한 줄로 적어 주세요."""
+
+_GUIDE_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "sections": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "week_label": {"type": "string"},   # "이번 주", "다음 주", "2주 후 ~ 마감일" 등
+                    "priority":   {"type": "string"},   # "high" | "medium" | "low"
+                    "items":      {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["week_label", "priority", "items"],
+                "additionalProperties": False,
+            },
+        },
+        "key_warning": {"type": "string"},
+    },
+    "required": ["sections", "key_warning"],
+    "additionalProperties": False,
+}
+
+
+def _guide_cache_key(user_id: int, picked_ids: list[int], today: date) -> str:
+    parts = [str(user_id), today.isoformat(), ",".join(str(x) for x in sorted(picked_ids))]
+    h = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
+    return f"plan_guide_{user_id}_{h}"
+
+
+def _dedup_picked_tasks(picked: list[dict]) -> list[dict]:
+    """담은 공고들의 발급 태스크를 서류명 기준으로 dedup. 가장 빠른 due_date 우선."""
+    m: dict[str, dict] = {}
+    for r in picked:
+        for t in r.get("issue_tasks") or []:
+            name = t.get("task")
+            due = (t.get("due_date") or "")[:10]
+            if not name or not due:
+                continue
+            cur = m.get(name)
+            if not cur or due < cur["due"]:
+                m[name] = {
+                    "task": name,
+                    "due": due,
+                    "priority": t.get("priority") or "normal",
+                    "related_titles": [r.get("title")],
+                }
+            else:
+                if r.get("title") not in cur["related_titles"]:
+                    cur["related_titles"].append(r.get("title"))
+    return sorted(m.values(), key=lambda x: x["due"])
+
+
+def generate_action_guide(
+    user_id: int,
+    plan: dict,
+    picked_ids: list[int],
+    *,
+    use_cache: bool = True,
+) -> dict:
+    """담은 공고 기반 시간 구간별 액션 가이드.
+
+    Returns: {"sections": [...], "key_warning": "...", "cached": bool, "picked_count": int}
+    """
+    from .analyzer.llm.base import LLMError
+    from .analyzer.llm.registry import get_llm_provider
+    from .analyzer.storage import load_derived, save_derived
+
+    recs = plan.get("recommendations") or []
+    picked_id_set = set(int(x) for x in picked_ids)
+    picked = [r for r in recs if int(r.get("announcement_id", 0)) in picked_id_set]
+    if not picked:
+        return {"sections": [], "key_warning": "", "cached": False, "picked_count": 0}
+
+    today = date.today()
+    cache_key = _guide_cache_key(user_id, [r["announcement_id"] for r in picked], today)
+    if use_cache:
+        cached = load_derived(cache_key)
+        if cached and isinstance(cached, dict) and "sections" in cached:
+            return {
+                "sections":     cached.get("sections") or [],
+                "key_warning":  cached.get("key_warning") or "",
+                "cached":       True,
+                "picked_count": len(picked),
+            }
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        profile = _load_profile(conn, user_id)
+    finally:
+        conn.close()
+
+    dedup_tasks = _dedup_picked_tasks(picked)
+    picked_cards = "\n".join(
+        f"- [{r['announcement_id']}] {r.get('title', '')[:80]} | "
+        f"마감 {(r.get('end_date') or '')[:10]} (D-{r.get('days_left')}) | "
+        f"미보유 {len(r.get('missing_docs') or [])}건"
+        for r in picked
+    )
+    task_lines = "\n".join(
+        f"- '{t['task']}' (~{t['due']}, {t['priority']}, {len(t['related_titles'])}개 공고 공통)"
+        for t in dedup_tasks
+    )
+
+    user_msg = _GUIDE_USER_TMPL.format(
+        today=today.isoformat(),
+        profile_json=json.dumps(_profile_for_narrative(profile), ensure_ascii=False),
+        n=len(picked),
+        picked_cards=picked_cards,
+        task_lines=task_lines or "(공통 발급 태스크 없음 — 보유 서류 충분)",
+    )
+
+    provider = get_llm_provider()
+    try:
+        result = provider.complete(
+            system=_GUIDE_SYSTEM,
+            user=user_msg,
+            response_schema=_GUIDE_SCHEMA,
+            max_tokens=1500,
+        )
+    except LLMError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise LLMError(f"가이드 생성 실패: {e}") from e
+
+    if not isinstance(result, dict):
+        raise LLMError(f"가이드 응답 형식 오류: {type(result).__name__}")
+
+    sections = result.get("sections") or []
+    key_warning = result.get("key_warning") or ""
+
+    save_derived(cache_key, {
+        "sections": sections,
+        "key_warning": key_warning,
+        "picked_ids": sorted(picked_id_set),
+        "today": today.isoformat(),
+    })
+    return {
+        "sections":     sections,
+        "key_warning":  key_warning,
+        "cached":       False,
+        "picked_count": len(picked),
+    }
+
+
 # compute_profile_fit / match_announcement 가 보는 핵심 필드만.
 _PLAN_PROFILE_FIELDS = (
     "business_type", "establishment_date", "region", "industry",
