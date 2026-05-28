@@ -2109,6 +2109,168 @@
   .pf-toast.visible { opacity: 1; transform: translateY(0); }
   .pf-toast.error { background: var(--accent); }
 
+  /* ─── 맞춤 플랜 (#pane-plan) ─── */
+  .plan-toolbar {
+    display: flex; align-items: center; gap: 12px;
+    margin: 14px 0 20px; flex-wrap: wrap;
+  }
+  .plan-refresh {
+    padding: 8px 14px; border-radius: 9px;
+    background: var(--bg-subtle); border: 1px solid var(--border);
+    color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .plan-refresh:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .plan-select {
+    padding: 7px 11px; border-radius: 9px;
+    background: var(--card); border: 1px solid var(--border-strong);
+    color: var(--text); font-size: 13px; font-family: inherit;
+    margin-left: auto;
+  }
+  .plan-meta { color: var(--muted); font-size: 12.5px; }
+  .plan-meta b { color: var(--text); font-weight: 600; }
+  .plan-cards { display: flex; flex-direction: column; gap: 14px; }
+  .plan-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px 22px; box-shadow: 0 1px 2px rgba(26,23,20,.03);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .plan-card-head {
+    display: flex; align-items: flex-start; gap: 14px;
+  }
+  .plan-rank {
+    flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif-en); font-size: 18px; font-weight: 600;
+  }
+  .plan-rank.r2, .plan-rank.r3 { background: var(--dark); }
+  .plan-rank.r4, .plan-rank.r5, .plan-rank.r6, .plan-rank.r7, .plan-rank.r8, .plan-rank.r9, .plan-rank.r10 {
+    background: var(--bg-accent); color: var(--text);
+  }
+  .plan-title-wrap { flex: 1; min-width: 0; }
+  .plan-title {
+    font-family: var(--serif-ko); font-weight: 600; font-size: 17px;
+    line-height: 1.4; letter-spacing: -0.01em; color: var(--text);
+    margin-bottom: 6px;
+  }
+  .plan-title a:hover { color: var(--accent); }
+  .plan-meta-row {
+    color: var(--muted); font-size: 12px;
+    display: flex; gap: 7px; flex-wrap: wrap; align-items: center;
+  }
+  .plan-dday {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+    background: var(--bg-accent); color: var(--muted);
+  }
+  .plan-dday.urgent { background: #FEE2E2; color: #B8401E; }
+  .plan-dday.imm    { background: #FFF1DC; color: #B45309; }
+  .plan-dday.normal { background: var(--primary-soft); color: var(--primary); }
+  .plan-type-badge {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; background: var(--bg-subtle); color: var(--text);
+  }
+  .plan-score {
+    color: var(--green, #3F7A4D); font-weight: 700; font-size: 12px;
+  }
+
+  /* 카드 본문: 자격 + 서류 + 발급 태스크 */
+  .plan-section { display: flex; flex-direction: column; gap: 6px; }
+  .plan-section-label {
+    color: var(--muted); font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .plan-fit-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .plan-fit-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 500;
+    background: var(--green-soft, #E4EDE2); color: var(--green, #3F7A4D);
+  }
+  .plan-fit-chip.no { background: var(--red-soft, #F3DBD1); color: var(--red, #C0432A); }
+
+  .plan-doc-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  @media (max-width: 600px) { .plan-doc-grid { grid-template-columns: repeat(2, 1fr); } }
+  .plan-doc-stat {
+    padding: 9px 12px; border-radius: 9px; background: var(--bg-subtle);
+    text-align: center;
+  }
+  .plan-doc-stat .n {
+    font-family: var(--serif-en); font-size: 22px; font-weight: 600;
+    line-height: 1; color: var(--text);
+  }
+  .plan-doc-stat .l {
+    color: var(--muted); font-size: 11px; margin-top: 4px;
+  }
+  .plan-doc-stat.miss .n   { color: #C0341B; }
+  .plan-doc-stat.exp .n    { color: #B45309; }
+  .plan-doc-stat.expired .n{ color: #C0432A; }
+  .plan-doc-stat.full .n   { color: var(--green, #3F7A4D); }
+
+  .plan-missing-list {
+    margin-top: 8px; padding: 10px 14px;
+    background: #FCE6E2; border-left: 3px solid #C0341B; border-radius: 0 9px 9px 0;
+    font-size: 12.5px; color: var(--text);
+  }
+  .plan-missing-list .label { color: #C0341B; font-weight: 700; margin-right: 6px; }
+  .plan-missing-list .item {
+    display: inline-block; background: #fff; border: 1px solid #F4C4BA;
+    padding: 2px 9px; border-radius: 999px; margin: 2px 4px 2px 0; font-size: 11.5px;
+  }
+
+  .plan-tasks { margin-top: 4px; }
+  .plan-task {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
+    align-items: center; padding: 9px 13px;
+    background: var(--bg-subtle); border-radius: 9px; margin-top: 6px;
+    font-size: 12.5px;
+  }
+  .plan-task .t-name { color: var(--text); font-weight: 500; }
+  .plan-task .t-prio {
+    font-size: 10.5px; padding: 2px 9px; border-radius: 999px;
+    font-weight: 700; flex-shrink: 0;
+  }
+  .plan-task .t-prio.urgent { background: #FCE6E2; color: #C0341B; }
+  .plan-task .t-prio.normal { background: var(--bg-accent); color: var(--muted); }
+  .plan-task .t-due { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
+  .plan-cta-row {
+    display: flex; gap: 8px; margin-top: 4px;
+    padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .plan-cta {
+    padding: 8px 14px; border-radius: 9px;
+    background: var(--bg-subtle); border: 1px solid var(--border);
+    color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .plan-cta:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+  .plan-cta.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .plan-cta.primary:hover { background: #BF4715; }
+
+  /* 빈 상태 */
+  .plan-empty-state {
+    padding: 40px 20px; text-align: center;
+    background: var(--bg-subtle); border-radius: 12px;
+    color: var(--muted);
+  }
+  .plan-empty-state .icon { font-size: 36px; margin-bottom: 10px; }
+  .plan-empty-state .ttl {
+    font-family: var(--serif-ko); font-size: 18px; font-weight: 500;
+    color: var(--text); margin-bottom: 4px;
+  }
+  .plan-empty-state .sub { font-size: 13px; }
+  .plan-empty-state .cta-link {
+    display: inline-block; margin-top: 14px; padding: 8px 16px;
+    border-radius: 9px; background: var(--accent); color: #fff;
+    font-weight: 600; font-size: 13px; text-decoration: none;
+  }
+
   @media (max-width: 880px) {
     .pf-grid { grid-template-columns: 1fr; }
     .pf-row { grid-template-columns: 110px 1fr; }
@@ -2898,6 +3060,7 @@
     <button class="tab-btn" data-tab="browse"><span class="sb-ic">🔍</span>공고 둘러보기<span class="count" id="cnt-browse">·</span></button>
     <button class="tab-btn" data-tab="match"><span class="sb-ic">🎯</span>공고 매칭<span class="count" id="cnt-match">·</span></button>
     <button class="tab-btn" data-tab="analyze"><span class="sb-ic">📊</span>공고 분석<span class="count" id="cnt-attach">0</span></button>
+    <button class="tab-btn" data-tab="plan"><span class="sb-ic">🧭</span>맞춤 플랜<span class="count" id="cnt-plan">·</span></button>
 
     <div class="sb-group-label">마이페이지</div>
     <button class="tab-btn" data-tab="my-docs"><span class="sb-ic">📁</span>내 서류<span class="count" id="cnt-my-docs">0</span></button>
@@ -3164,6 +3327,27 @@
     </div>
   </section>
 
+  <!-- 탭: 맞춤 플랜 (Top N 추천 + 액션) -->
+  <section class="pane" id="pane-plan">
+    <div class="panel">
+      <h2 class="pane-title">🧭 맞춤 플랜</h2>
+      <p style="margin-top:0; color:var(--muted); font-size:13px;">
+        기업 프로필 + 보유 서류 + 마감 임박도를 종합해 추천 Top N 공고를 정렬합니다.
+        각 카드에서 부족한 서류와 발급 우선순위를 한눈에 볼 수 있어요.
+      </p>
+      <div class="plan-toolbar">
+        <button class="plan-refresh" onclick="loadPlan()">🔄 다시 계산</button>
+        <span class="plan-meta" id="plan-meta"></span>
+        <select id="plan-topn" onchange="loadPlan()" class="plan-select">
+          <option value="3">Top 3</option>
+          <option value="5" selected>Top 5</option>
+          <option value="10">Top 10</option>
+        </select>
+      </div>
+      <div id="plan-body"><div class="empty">불러오는 중...</div></div>
+    </div>
+  </section>
+
   <!-- 탭 4: 캘린더 (모든 폴더의 일정 통합) -->
   <section class="pane" id="pane-calendar">
     <div class="panel">
@@ -3358,6 +3542,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     if (btn.dataset.tab === "home") renderHome();
     if (btn.dataset.tab === "browse" && !browseCache.length) loadBrowseAnnouncements();
     if (btn.dataset.tab === "match" && !announcementsCache.length) loadAnnouncements();
+    if (btn.dataset.tab === "plan" && !window._planLoaded) loadPlan();
     if (btn.dataset.tab === "my-docs") renderMyDocs();
     if (btn.dataset.tab === "analyze") {
       loadFolders().then(loadAttachments);
@@ -3788,6 +3973,162 @@ function toggleBrowseFav(id) {
   if (favs.has(id)) favs.delete(id); else favs.add(id);
   setBrowseFavs(favs);
   renderBrowse();
+}
+
+// ─── 맞춤 플랜 (/api/plan) ───────────────────────────────────────────
+async function loadPlan() {
+  const body = document.getElementById("plan-body");
+  const meta = document.getElementById("plan-meta");
+  const topN = parseInt((document.getElementById("plan-topn") || {}).value || "5", 10);
+  body.innerHTML = `<div class="empty">매칭 계산 중... (수백 건 자격 비교)</div>`;
+  meta.textContent = "";
+  try {
+    const res = await fetch(`/api/plan?top_n=${topN}`);
+    if (res.status === 401) {
+      body.innerHTML = _planEmptyState("🔒", "로그인이 필요합니다",
+        "맞춤 플랜은 본인의 프로필·보유 서류 기반으로 계산됩니다.",
+        "/api/auth/kakao/login", "카카오로 로그인");
+      return;
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "응답 오류" }));
+      body.innerHTML = `<div class="error">맞춤 플랜 로드 실패: ${escapeHtml(err.error || res.statusText)}</div>`;
+      return;
+    }
+    const plan = await res.json();
+    window._planLoaded = true;
+    document.getElementById("cnt-plan").textContent = plan.recommendations.length;
+    renderPlan(plan);
+  } catch (e) {
+    body.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function _planEmptyState(icon, title, sub, ctaHref, ctaText) {
+  return `
+    <div class="plan-empty-state">
+      <div class="icon">${icon}</div>
+      <div class="ttl">${escapeHtml(title)}</div>
+      <div class="sub">${escapeHtml(sub)}</div>
+      ${ctaHref ? `<a class="cta-link" href="${escapeHtml(ctaHref)}">${escapeHtml(ctaText)}</a>` : ""}
+    </div>
+  `;
+}
+
+function renderPlan(plan) {
+  const body = document.getElementById("plan-body");
+  const meta = document.getElementById("plan-meta");
+
+  // 메타 라인 (Top N 위에 요약)
+  meta.innerHTML = `진행중 <b>${plan.candidate_pool}</b> 건 → 자격 통과 <b>${plan.eligible_pool}</b> 건 → 추천 Top <b>${plan.recommendations.length}</b> ` +
+    `<span style="margin-left:8px; opacity:0.7">| 내 서류 ${plan.my_docs_count}건 · 프로필 ${plan.profile_completed ? "✓" : "미입력"}</span>`;
+
+  if (!plan.profile_completed) {
+    body.innerHTML = _planEmptyState("👤", "기업 프로필을 먼저 입력해 주세요",
+      "프로필 (업종·지역·업력 등) 이 있어야 자격 매칭이 동작합니다.",
+      null, "");
+    return;
+  }
+  if (!plan.recommendations.length) {
+    body.innerHTML = _planEmptyState("🔍", "조건에 맞는 공고가 없습니다",
+      "프로필을 조정하거나 보유 서류를 추가해 보세요.",
+      null, "");
+    return;
+  }
+
+  body.innerHTML = `<div class="plan-cards">` + plan.recommendations.map((r, i) =>
+    _renderPlanCard(r, i + 1)).join("") + `</div>`;
+}
+
+function _renderPlanCard(r, rank) {
+  // D-day 등급
+  const dd = r.days_left == null ? "" :
+    r.days_left <= 7 ? "urgent" :
+    r.days_left <= 14 ? "imm" : "normal";
+  const ddText = r.days_left == null ? (r.d_day || "") :
+    r.days_left === 0 ? "오늘 마감" :
+    `D-${r.days_left}`;
+
+  // 자격 매칭 reasons → chip
+  const fitChips = (r.profile_fit?.reasons || []).map(fr => `
+    <span class="plan-fit-chip ${fr.ok ? '' : 'no'}" title="${escapeHtml(fr.detail || '')}">
+      ${fr.ok ? '✓' : '✗'} ${escapeHtml(fr.label)}
+    </span>
+  `).join("");
+
+  // 서류 통계 4분할
+  const s = r.summary || {};
+  const docStats = `
+    <div class="plan-doc-grid">
+      <div class="plan-doc-stat full"><div class="n">${s.fulfilled || 0}</div><div class="l">완비</div></div>
+      <div class="plan-doc-stat exp"><div class="n">${s.expiring || 0}</div><div class="l">곧 만료</div></div>
+      <div class="plan-doc-stat expired"><div class="n">${s.expired || 0}</div><div class="l">만료</div></div>
+      <div class="plan-doc-stat miss"><div class="n">${s.missing || 0}</div><div class="l">미보유</div></div>
+    </div>
+  `;
+
+  // 미보유 + 만료 합쳐서 빨강 리스트로 표시
+  const needList = [...(r.missing_docs || []), ...(r.expired_docs || [])];
+  const missingHtml = needList.length ? `
+    <div class="plan-missing-list">
+      <span class="label">발급/갱신 필요</span>
+      ${needList.map(d => `<span class="item">${escapeHtml(d)}</span>`).join("")}
+    </div>
+  ` : "";
+
+  // 발급 태스크 (Top 3 만 미리보기)
+  const tasksHtml = (r.issue_tasks || []).slice(0, 3).map(t => `
+    <div class="plan-task">
+      <span class="t-name">${escapeHtml(t.task || "")}</span>
+      <span class="t-prio ${t.priority || 'normal'}">${t.priority === 'urgent' ? '긴급' : '일반'}</span>
+      <span class="t-due">~${escapeHtml((t.due_date || '').slice(5))}</span>
+    </div>
+  `).join("");
+  const tasksBlock = tasksHtml ? `
+    <div class="plan-section">
+      <div class="plan-section-label">📋 발급 태스크 (최대 3건 미리보기)</div>
+      <div class="plan-tasks">${tasksHtml}</div>
+    </div>
+  ` : "";
+
+  return `
+    <div class="plan-card">
+      <div class="plan-card-head">
+        <div class="plan-rank r${rank}">${rank}</div>
+        <div class="plan-title-wrap">
+          <div class="plan-title">
+            ${r.detail_url ? `<a href="${escapeHtml(r.detail_url)}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>` : escapeHtml(r.title)}
+          </div>
+          <div class="plan-meta-row">
+            <span>${escapeHtml(r.source_name || r.source_code || "")}</span>
+            ${r.department ? `<span>· ${escapeHtml(r.department)}</span>` : ""}
+            <span>· ~${escapeHtml((r.end_date || '').slice(0,10))}</span>
+            ${ddText ? `<span class="plan-dday ${dd}">${escapeHtml(ddText)}</span>` : ""}
+            ${r.type?.label ? `<span class="plan-type-badge">${r.type.emoji || ''} ${escapeHtml(r.type.label)}</span>` : ""}
+            <span class="plan-score">점수 ${r.score_combined}</span>
+          </div>
+        </div>
+      </div>
+
+      ${fitChips ? `<div class="plan-section">
+        <div class="plan-section-label">✓ 자격 매칭</div>
+        <div class="plan-fit-chips">${fitChips}</div>
+      </div>` : ""}
+
+      <div class="plan-section">
+        <div class="plan-section-label">📁 서류 상태</div>
+        ${docStats}
+        ${missingHtml}
+      </div>
+
+      ${tasksBlock}
+
+      <div class="plan-cta-row">
+        ${r.detail_url ? `<a class="plan-cta primary" href="${escapeHtml(r.detail_url)}" target="_blank" rel="noopener">원문 공고 →</a>` : ""}
+        <button class="plan-cta" onclick="(function(){ const m=document.querySelector('.tab-btn[data-tab=\\'match\\']'); if(m) m.click(); })()">매칭 탭에서 보기</button>
+      </div>
+    </div>
+  `;
 }
 
 async function loadBrowseAnnouncements() {
