@@ -2187,9 +2187,11 @@
   .plan-cards { display: flex; flex-direction: column; gap: 14px; }
   .plan-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-    padding: 20px 22px; box-shadow: 0 1px 2px rgba(26,23,20,.03);
-    display: flex; flex-direction: column; gap: 14px;
+    padding: 18px 22px; box-shadow: 0 1px 2px rgba(26,23,20,.03);
+    display: flex; flex-direction: column; gap: 12px;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
+  .plan-card:hover { border-color: var(--border-strong); box-shadow: 0 2px 6px rgba(26,23,20,.05); }
   .plan-card-head {
     display: flex; align-items: flex-start; gap: 14px;
   }
@@ -2207,13 +2209,22 @@
   .plan-title {
     font-family: var(--serif-ko); font-weight: 600; font-size: 17px;
     line-height: 1.4; letter-spacing: -0.01em; color: var(--text);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
-  .plan-title a:hover { color: var(--accent); }
+  .plan-title a {
+    color: var(--text); text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  .plan-title a:hover {
+    color: var(--accent); border-bottom-color: var(--accent);
+  }
   .plan-meta-row {
     color: var(--muted); font-size: 12px;
-    display: flex; gap: 7px; flex-wrap: wrap; align-items: center;
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    row-gap: 5px;
   }
+  .plan-meta-row > span:not([class]) { line-height: 1.6; }
   .plan-dday {
     display: inline-block; padding: 2px 9px; border-radius: 999px;
     font-size: 11px; font-weight: 700;
@@ -2227,14 +2238,16 @@
     font-size: 11px; font-weight: 600; background: var(--bg-subtle); color: var(--text);
   }
   .plan-score {
-    color: var(--green, #3F7A4D); font-weight: 700; font-size: 12px;
+    color: var(--muted); font-weight: 600; font-size: 11.5px;
+    padding: 2px 8px; border-radius: 999px; background: var(--bg-subtle);
+    cursor: help;
   }
 
   /* 카드 본문: 자격 + 서류 + 발급 태스크 */
-  .plan-section { display: flex; flex-direction: column; gap: 6px; }
+  .plan-section { display: flex; flex-direction: column; gap: 7px; }
   .plan-section-label {
-    color: var(--muted); font-size: 10.5px; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.02em;
   }
   .plan-fit-chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .plan-fit-chip {
@@ -2246,51 +2259,70 @@
   .plan-fit-chip.no { background: var(--red-soft, #F3DBD1); color: var(--red, #C0432A); }
 
   .plan-doc-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
   }
   @media (max-width: 600px) { .plan-doc-grid { grid-template-columns: repeat(2, 1fr); } }
   .plan-doc-stat {
-    padding: 9px 12px; border-radius: 9px; background: var(--bg-subtle);
-    text-align: center;
+    padding: 7px 10px 6px; border-radius: 8px; background: var(--bg-subtle);
+    text-align: center; opacity: 0.55;
+    transition: opacity 0.12s;
   }
+  .plan-doc-stat.has-value { opacity: 1; }
   .plan-doc-stat .n {
-    font-family: var(--serif-en); font-size: 22px; font-weight: 600;
-    line-height: 1; color: var(--text);
+    font-family: var(--serif-en); font-size: 18px; font-weight: 600;
+    line-height: 1.1; color: var(--text);
   }
   .plan-doc-stat .l {
-    color: var(--muted); font-size: 11px; margin-top: 4px;
+    color: var(--muted); font-size: 10.5px; margin-top: 2px; letter-spacing: -0.01em;
   }
-  .plan-doc-stat.miss .n   { color: #C0341B; }
-  .plan-doc-stat.exp .n    { color: #B45309; }
-  .plan-doc-stat.expired .n{ color: #C0432A; }
-  .plan-doc-stat.full .n   { color: var(--green, #3F7A4D); }
+  .plan-doc-stat.miss.has-value .n   { color: #C0341B; }
+  .plan-doc-stat.exp.has-value .n    { color: #B45309; }
+  .plan-doc-stat.expired.has-value .n{ color: #C0432A; }
+  .plan-doc-stat.full.has-value .n   { color: var(--green, #3F7A4D); }
 
   .plan-missing-list {
-    margin-top: 8px; padding: 10px 14px;
-    background: #FCE6E2; border-left: 3px solid #C0341B; border-radius: 0 9px 9px 0;
+    margin-top: 8px; padding: 9px 13px;
+    background: #FCEBE5; border: 1px solid #F4C4BA;
+    border-left: 3px solid #C0341B; border-radius: 0 8px 8px 0;
     font-size: 12.5px; color: var(--text);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
   }
-  .plan-missing-list .label { color: #C0341B; font-weight: 700; margin-right: 6px; }
+  .plan-missing-list .label {
+    color: #C0341B; font-weight: 700;
+    font-size: 11px; letter-spacing: 0.02em;
+    margin-right: 4px;
+  }
   .plan-missing-list .item {
     display: inline-block; background: #fff; border: 1px solid #F4C4BA;
-    padding: 2px 9px; border-radius: 999px; margin: 2px 4px 2px 0; font-size: 11.5px;
+    padding: 2px 9px; border-radius: 999px; font-size: 11.5px;
+    color: var(--text); font-weight: 500;
   }
 
-  .plan-tasks { margin-top: 4px; }
+  /* 자격 메타 없는 공고용 안내 */
+  .plan-fit-empty {
+    color: var(--muted); font-size: 12px; font-style: italic;
+    padding: 6px 10px; background: var(--bg-subtle);
+    border-radius: 7px; display: inline-block;
+  }
+
+  .plan-tasks { margin-top: 4px; display: flex; flex-direction: column; gap: 5px; }
   .plan-task {
-    display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
-    align-items: center; padding: 9px 13px;
-    background: var(--bg-subtle); border-radius: 9px; margin-top: 6px;
+    display: grid; grid-template-columns: 1fr 50px 60px; gap: 10px;
+    align-items: center; padding: 8px 12px;
+    background: var(--bg-subtle); border-radius: 8px;
     font-size: 12.5px;
   }
   .plan-task .t-name { color: var(--text); font-weight: 500; }
   .plan-task .t-prio {
-    font-size: 10.5px; padding: 2px 9px; border-radius: 999px;
-    font-weight: 700; flex-shrink: 0;
+    font-size: 10px; padding: 2px 8px; border-radius: 999px;
+    font-weight: 700; flex-shrink: 0; text-align: center;
   }
   .plan-task .t-prio.urgent { background: #FCE6E2; color: #C0341B; }
   .plan-task .t-prio.normal { background: var(--bg-accent); color: var(--muted); }
-  .plan-task .t-due { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+  .plan-task .t-due {
+    color: var(--muted); font-size: 11px; white-space: nowrap; text-align: right;
+    font-family: var(--serif-en); letter-spacing: 0.02em;
+  }
 
   .plan-cta-row {
     display: flex; gap: 8px; margin-top: 4px;
@@ -4660,21 +4692,24 @@ function _renderPlanCard(r, rank) {
     r.days_left === 0 ? "오늘 마감" :
     `D-${r.days_left}`;
 
-  // 자격 매칭 reasons → chip
-  const fitChips = (r.profile_fit?.reasons || []).map(fr => `
-    <span class="plan-fit-chip ${fr.ok ? '' : 'no'}" title="${escapeHtml(fr.detail || '')}">
-      ${fr.ok ? '✓' : '✗'} ${escapeHtml(fr.label)}
-    </span>
-  `).join("");
+  // 자격 매칭 reasons → chip (없으면 안내)
+  const reasons = r.profile_fit?.reasons || [];
+  const fitChips = reasons.length
+    ? reasons.map(fr => `
+        <span class="plan-fit-chip ${fr.ok ? '' : 'no'}" title="${escapeHtml(fr.detail || '')}">
+          ${fr.ok ? '✓' : '✗'} ${escapeHtml(fr.label)}
+        </span>`).join("")
+    : `<span class="plan-fit-empty">📝 공고에 정형 자격 메타가 없어 원문 확인이 필요합니다.</span>`;
 
-  // 서류 통계 4분할
+  // 서류 통계 4분할 (값 0 인 칸은 회색 톤다운)
   const s = r.summary || {};
+  const _stat = (cls, val, label) => `<div class="plan-doc-stat ${cls} ${(val || 0) > 0 ? 'has-value' : ''}"><div class="n">${val || 0}</div><div class="l">${label}</div></div>`;
   const docStats = `
     <div class="plan-doc-grid">
-      <div class="plan-doc-stat full"><div class="n">${s.fulfilled || 0}</div><div class="l">완비</div></div>
-      <div class="plan-doc-stat exp"><div class="n">${s.expiring || 0}</div><div class="l">곧 만료</div></div>
-      <div class="plan-doc-stat expired"><div class="n">${s.expired || 0}</div><div class="l">만료</div></div>
-      <div class="plan-doc-stat miss"><div class="n">${s.missing || 0}</div><div class="l">미보유</div></div>
+      ${_stat('full', s.fulfilled, '완비')}
+      ${_stat('exp', s.expiring, '곧 만료')}
+      ${_stat('expired', s.expired, '만료')}
+      ${_stat('miss', s.missing, '미보유')}
     </div>
   `;
 
@@ -4682,7 +4717,7 @@ function _renderPlanCard(r, rank) {
   const needList = [...(r.missing_docs || []), ...(r.expired_docs || [])];
   const missingHtml = needList.length ? `
     <div class="plan-missing-list">
-      <span class="label">발급/갱신 필요</span>
+      <span class="label">발급 필요</span>
       ${needList.map(d => `<span class="item">${escapeHtml(d)}</span>`).join("")}
     </div>
   ` : "";
@@ -4692,12 +4727,14 @@ function _renderPlanCard(r, rank) {
     <div class="plan-task">
       <span class="t-name">${escapeHtml(t.task || "")}</span>
       <span class="t-prio ${t.priority || 'normal'}">${t.priority === 'urgent' ? '긴급' : '일반'}</span>
-      <span class="t-due">~${escapeHtml((t.due_date || '').slice(5))}</span>
+      <span class="t-due">~ ${escapeHtml((t.due_date || '').slice(5))}</span>
     </div>
   `).join("");
+  const taskTotal = (r.issue_tasks || []).length;
+  const tasksMore = taskTotal > 3 ? ` <span style="color:var(--muted); font-weight:400; font-size:10.5px">· 전체 ${taskTotal}건</span>` : "";
   const tasksBlock = tasksHtml ? `
     <div class="plan-section">
-      <div class="plan-section-label">📋 발급 태스크 (최대 3건 미리보기)</div>
+      <div class="plan-section-label">📋 발급 태스크${tasksMore}</div>
       <div class="plan-tasks">${tasksHtml}</div>
     </div>
   ` : "";
@@ -4729,10 +4766,10 @@ function _renderPlanCard(r, rank) {
 
       <div id="plan-narrative-${r.announcement_id}"></div>
 
-      ${fitChips ? `<div class="plan-section">
+      <div class="plan-section">
         <div class="plan-section-label">✓ 자격 매칭</div>
         <div class="plan-fit-chips">${fitChips}</div>
-      </div>` : ""}
+      </div>
 
       <div class="plan-section">
         <div class="plan-section-label">📁 서류 상태</div>
