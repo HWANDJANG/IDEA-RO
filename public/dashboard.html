@@ -4481,11 +4481,14 @@ function _renderPlanGuide(g, pickedCount) {
       <ul>${(sec.items || []).map(it => `<li>${escapeHtml(it)}</li>`).join("")}</ul>
     </div>
   `).join("");
+  const pdfBadge = (g.pdf_analyzed_count > 0)
+    ? `<span style="margin-left:8px; padding:3px 9px; border-radius:999px; background:var(--accent); color:#fff; font-size:11px; font-weight:700">📄 PDF ${g.pdf_analyzed_count}건 활용</span>`
+    : "";
   return `
     <div class="plan-guide-wrap">
       <div class="plan-guide-head">
         <div>
-          <div class="plan-guide-title"><span class="nv-icon">✨</span> AI 액션 가이드 · 담은 ${pickedCount}건 기반</div>
+          <div class="plan-guide-title"><span class="nv-icon">✨</span> AI 액션 가이드 · 담은 ${pickedCount}건 기반${pdfBadge}</div>
           <div class="plan-guide-sub">담은 공고들을 종합해 시간 구간별로 무엇부터 해야 하는지 정리했어요.${g.cached ? ' (캐시)' : ''}</div>
         </div>
       </div>

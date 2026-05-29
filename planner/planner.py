@@ -306,10 +306,17 @@ _GUIDE_SYSTEM = """당신은 한국 정부 창업지원사업 신청 컨설턴�
    - 지원금 ≥1억원 + 노력 '높음' → 사업계획서 작성에 가장 큰 시간 배정 권장.
    - 지원금 작거나 노력 '낮음' → 발급 + 신청서로 충분.
 
-10. 사용자가 캘린더에 일정을 등록하는 단계는 이미 별도 버튼이 있으니 가이드에서 다시 언급하지 마세요.
-11. 추상 표현 ("지원서류 준비") 대신 구체적 단계 ("사업자등록증명 발급 + 사업계획서 초안 작성") 로.
-12. 항목당 한 줄, 한국어 40~120자.
-13. 응답은 반드시 지정된 JSON 스키마에 맞아야 합니다."""
+10. ★ 공고 PDF 분석(📄) 이 있는 공고는 그 안의 평가 기준 / 의무사항 / 지원금 상세 / 유의사항을 적극 활용:
+   - 평가 기준이 있으면 그 가중치(예: '기술성 40%, 사업성 30%')를 다음 주 가이드에 인용.
+   - 의무사항이 있으면 key_warning 또는 마감 직전 가이드에서 "신청 전 부담 확인" 으로 짚어주기.
+   - 지원금 상세(현물/연구비/매출액 대비 비율 등)가 있으면 사업계획서 작업 강도 결정에 반영.
+   - 유의사항(중복 신청 금지, 자격 제한 등)이 있으면 반드시 명시.
+   - PDF 분석이 없는 공고는 일반 가이드로 충분.
+
+11. 사용자가 캘린더에 일정을 등록하는 단계는 이미 별도 버튼이 있으니 가이드에서 다시 언급하지 마세요.
+12. 추상 표현 ("지원서류 준비") 대신 구체적 단계 ("사업자등록증명 발급 + 사업계획서 초안 작성") 로.
+13. 항목당 한 줄, 한국어 40~120자.
+14. 응답은 반드시 지정된 JSON 스키마에 맞아야 합니다."""
 
 _GUIDE_USER_TMPL = """## 오늘 날짜
 {today}
@@ -359,12 +366,60 @@ _GUIDE_SCHEMA: dict = {
 }
 
 
-def _guide_cache_key(user_id: int, picked_ids: list[int], today: date) -> str:
-    # 시스템 프롬프트 해시를 포함 → 프롬프트 바뀌면 자동 invalidate
+def _guide_cache_key(user_id: int, picked_ids: list[int], today: date, pdf_hashes: Optional[list[str]] = None) -> str:
+    """캐시 키 — 시스템 프롬프트 해시 + (Step C) 결합된 PDF 분석 hash 포함.
+    프롬프트 수정 시 / PDF 추가·삭제 시 모두 자동 invalidate.
+    """
     sys_hash = hashlib.sha256(_GUIDE_SYSTEM.encode("utf-8")).hexdigest()[:6]
-    parts = [sys_hash, str(user_id), today.isoformat(), ",".join(str(x) for x in sorted(picked_ids))]
+    pdf_part = ",".join(sorted(pdf_hashes or []))
+    parts = [sys_hash, str(user_id), today.isoformat(), ",".join(str(x) for x in sorted(picked_ids)), pdf_part]
     h = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
     return f"plan_guide_{user_id}_{h}"
+
+
+# ─── Step C: 담은 공고의 PDF 분석 결과 로드 + 압축 ──────────────────────
+def _load_analyses_for_announcement(conn: sqlite3.Connection, ann_id: int, user_id: int) -> list[tuple[str, str, dict]]:
+    """공고 id 에 연결된 PDF 분석 결과들 (해당 user 의 폴더만).
+
+    Returns: [(file_hash, original_filename, analysis_dict), ...]
+    """
+    folders = conn.execute(
+        "SELECT id FROM attachment_folders WHERE announcement_id=? AND user_id=?",
+        (ann_id, user_id),
+    ).fetchall()
+    if not folders:
+        return []
+    folder_ids = tuple(f["id"] for f in folders)
+    placeholders = ",".join("?" * len(folder_ids))
+    rows = conn.execute(
+        f"SELECT file_hash, original_filename FROM uploaded_attachments "
+        f"WHERE folder_id IN ({placeholders}) AND user_id=?",
+        (*folder_ids, user_id),
+    ).fetchall()
+
+    from .analyzer.storage import load_analysis
+    out: list[tuple[str, str, dict]] = []
+    for r in rows:
+        a = load_analysis(r["file_hash"])
+        if a:
+            out.append((r["file_hash"], r["original_filename"] or "", a))
+    return out
+
+
+def _summarize_analyses(analyses: list[tuple[str, str, dict]]) -> str:
+    """공고의 모든 PDF 분석 결과를 합쳐 LLM 컨텍스트용 짧은 요약.
+    가이드 생성에 핵심인 것만: 평가 기준, 의무, 지원금 상세, 유의사항.
+    schedule / required_docs 는 다른 데이터로 이미 들어가서 생략.
+    """
+    if not analyses:
+        return ""
+    from .analyzer.analyzer import format_analysis_summary
+    blocks = []
+    for _h, fname, a in analyses[:3]:  # 한 공고당 최대 3 PDF
+        text = format_analysis_summary(a, source_name=fname)
+        if text:
+            blocks.append(text)
+    return "\n".join(blocks)
 
 
 def _dedup_picked_tasks(picked: list[dict]) -> list[dict]:
@@ -412,7 +467,24 @@ def generate_action_guide(
         return {"sections": [], "key_warning": "", "cached": False, "picked_count": 0}
 
     today = date.today()
-    cache_key = _guide_cache_key(user_id, [r["announcement_id"] for r in picked], today)
+    # PDF 분석 결과 미리 로드 → 캐시 키에 hash 포함 (PDF 추가/삭제 시 자동 invalidate)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        profile = _load_profile(conn, user_id)
+        # ann_id → [(file_hash, fname, analysis_dict), ...]
+        analyses_by_ann: dict[int, list[tuple[str, str, dict]]] = {}
+        all_hashes: list[str] = []
+        for r in picked:
+            ann_id = int(r["announcement_id"])
+            anal = _load_analyses_for_announcement(conn, ann_id, user_id)
+            if anal:
+                analyses_by_ann[ann_id] = anal
+                all_hashes.extend(a[0] for a in anal)
+    finally:
+        conn.close()
+
+    cache_key = _guide_cache_key(user_id, [r["announcement_id"] for r in picked], today, all_hashes)
     if use_cache:
         cached = load_derived(cache_key)
         if cached and isinstance(cached, dict) and "sections" in cached:
@@ -421,14 +493,8 @@ def generate_action_guide(
                 "key_warning":  cached.get("key_warning") or "",
                 "cached":       True,
                 "picked_count": len(picked),
+                "pdf_analyzed_count": cached.get("pdf_analyzed_count", 0),
             }
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        profile = _load_profile(conn, user_id)
-    finally:
-        conn.close()
 
     dedup_tasks = _dedup_picked_tasks(picked)
 
@@ -452,6 +518,17 @@ def generate_action_guide(
         effort = sig.get("effort_label") or "?"
         req_n = sig.get("req_doc_count") or 0
 
+        # Step C: PDF 분석 결과 (있을 때만)
+        ann_id = int(r["announcement_id"])
+        pdf_block = ""
+        if ann_id in analyses_by_ann:
+            summary = _summarize_analyses(analyses_by_ann[ann_id])
+            if summary:
+                pdf_block = (
+                    f"\n    📄 공고 PDF 분석 ({len(analyses_by_ann[ann_id])} 건):\n"
+                    + "\n".join(f"      {line}" for line in summary.split("\n") if line.strip())
+                )
+
         return (
             f"- [{r['announcement_id']}] {r.get('title', '')[:90]}\n"
             f"    마감: {(r.get('end_date') or '')[:10]} (D-{r.get('days_left')})\n"
@@ -461,6 +538,7 @@ def generate_action_guide(
             + _docs_line("⚠️ 만료 (재발급 필요)",   r.get("expired_docs")   or []) + "\n"
             + _docs_line("⏰ 임박 (갱신 권장)",      r.get("expiring_docs")  or []) + "\n"
             + _docs_line("❌ 미보유 (신규 발급)",    r.get("missing_docs")   or [])
+            + pdf_block
         )
 
     picked_cards = "\n\n".join(_picked_card_block(r) for r in picked)
@@ -496,17 +574,20 @@ def generate_action_guide(
     sections = result.get("sections") or []
     key_warning = result.get("key_warning") or ""
 
+    pdf_analyzed_count = len(analyses_by_ann)
     save_derived(cache_key, {
         "sections": sections,
         "key_warning": key_warning,
         "picked_ids": sorted(picked_id_set),
         "today": today.isoformat(),
+        "pdf_analyzed_count": pdf_analyzed_count,
     })
     return {
-        "sections":     sections,
-        "key_warning":  key_warning,
-        "cached":       False,
-        "picked_count": len(picked),
+        "sections":          sections,
+        "key_warning":       key_warning,
+        "cached":            False,
+        "picked_count":      len(picked),
+        "pdf_analyzed_count": pdf_analyzed_count,
     }
 
 
