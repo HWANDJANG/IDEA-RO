@@ -1408,6 +1408,13 @@
     cursor: pointer;
   }
   .aa-trigger-btn:hover, .aa-retry-btn:hover { background: var(--accent-soft); }
+  /* 보조 버튼 — "+ 내 자료 추가" (수동 첨부) */
+  .aa-attach-btn {
+    border: 1px dashed var(--border); background: transparent; color: var(--muted);
+    padding: 4px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+    cursor: pointer;
+  }
+  .aa-attach-btn:hover { background: var(--bg-subtle); color: var(--text); border-color: var(--muted); }
 
   /* 공고 둘러보기 — Phase 2: 모드 토글 (전체 목록 vs 자격 맞춤) */
   .browse-mode-toggle {
@@ -5479,7 +5486,6 @@ async function renderAnnouncements() {
               <span class="doc-status-pill ds-${docStatus.key}" title="보유 ${sum.fulfilled} · 임박 ${sum.expiring} · 만료 ${sum.expired} · 미보유 ${sum.missing}">
                 <span class="dsp-icon">${docStatus.icon}</span>${escapeHtml(docStatus.label)}
               </span>
-              <button class="attach-btn" onclick="event.stopPropagation(); openAttachPdf(${idx})" title="이 공고의 PDF를 첨부하면 정밀 비교에 사용됩니다">📎 PDF</button>
               <button class="match-toggle" onclick="event.stopPropagation(); toggleMatchDetail(${idx})" aria-label="상세보기">
                 <span class="mt-text"></span><span class="mt-caret">▾</span>
               </button>
@@ -5589,7 +5595,10 @@ function renderAutoAnalysisBlock(data, annId) {
       <div class="aa-block aa-empty">
         <div class="aa-block-head">📊 자동 수집된 자료 없음</div>
         <div class="aa-block-sub">백그라운드에서 공고 페이지를 분석 중일 수 있어요. 잠시 후 다시 펼쳐주세요.</div>
-        <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId})">🚀 지금 분석 시작</button>
+        <div class="aa-block-foot" style="border:none; padding-top:0;">
+          <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId})">🚀 지금 분석 시작</button>
+          <button class="aa-attach-btn" onclick="openAttachPdfByAnnId(${annId})">+ 내 자료 추가</button>
+        </div>
       </div>`;
   }
   // 그룹화
@@ -5643,7 +5652,8 @@ function renderAutoAnalysisBlock(data, annId) {
       <div class="aa-files">${fileListHtml}</div>
       <div class="aa-block-foot">
         <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId}, true)" title="다시 분석 (캐시 무시)">🔄 다시 분석</button>
-        <span class="aa-block-hint">정확한 분석은 원문 PDF 와 함께 확인하세요. 직접 PDF 첨부는 카드 헤더의 📎 PDF 버튼.</span>
+        <button class="aa-attach-btn" onclick="openAttachPdfByAnnId(${annId})" title="공고 페이지에서 자동 수집되지 않은 자료 (사업계획서 초안 등) 를 추가">+ 내 자료 추가</button>
+        <span class="aa-block-hint">자동 수집이 안 됐거나 추가 자료가 있으면 직접 첨부할 수 있어요.</span>
       </div>
     </div>`;
 }
@@ -5714,10 +5724,29 @@ async function _ensureFolderForAnnouncement(ann) {
 let _attachContext = null;  // { folder_id, announcement_id, announcement }
 let _attachScanResults = [];  // 마지막 scan-url 응답의 files 배열
 
+// Phase 3: 자동 분석 블록의 '내 자료 추가' 에서도 호출 — annId 직접 받는 헬퍼
+async function openAttachPdfByAnnId(annId) {
+  const result = (window._matchResults || []).find(r => r?.announcement?.id === annId);
+  if (!result) {
+    alert("이 공고의 매칭 데이터를 찾지 못했어요. 새로고침 후 다시 시도해주세요.");
+    return;
+  }
+  return _openAttachPdfForAnnouncement(result.announcement);
+}
+
 async function openAttachPdf(idx) {
-  const result = (window._matchResults || [])[idx];
+  // visible idx 가 results idx 와 다를 수 있어 DOM 의 data-ann-id 우선 사용
+  const card = document.getElementById(`ann-${idx}`);
+  const annId = card ? parseInt(card.dataset.annId, 10) : null;
+  const result = annId
+    ? (window._matchResults || []).find(r => r?.announcement?.id === annId)
+    : (window._matchResults || [])[idx];
   if (!result) return;
-  const ann = result.announcement;
+  return _openAttachPdfForAnnouncement(result.announcement);
+}
+
+// 실제 첨부 모달 띄우는 공통 헬퍼 — announcement 객체 직접 받음.
+async function _openAttachPdfForAnnouncement(ann) {
   try {
     const folder = await _ensureFolderForAnnouncement(ann);
     _attachContext = { folder_id: folder.id, announcement_id: ann.id, announcement: ann };
@@ -5730,7 +5759,7 @@ async function openAttachPdf(idx) {
     _switchAttachTab("file");  // 기본은 파일 업로드
     document.getElementById("attach-overlay").classList.add("show");
   } catch (e) {
-    alert("PDF 첨부 준비 실패: " + e.message);
+    alert("자료 첨부 준비 실패: " + e.message);
   }
 }
 
