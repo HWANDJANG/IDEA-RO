@@ -24,6 +24,7 @@
 | K-Startup PDF 가 Synap 뷰어로 열려 다운로드 어려움 | 공고 페이지 URL 붙여넣기 → 서버가 첨부 PDF 목록 자동 수집 + 선택 가져오기 (`/api/attachments/scan-url`) |
 | 캘린더에 같은 "모집기간"이 매일 칩으로 도배되어 산만함 | 주 단위 timeline bar (Google Calendar 종일 일정 스타일) + 일정 클릭 시 우측 사이드 패널 (상세·진행률·준비서류·액션) |
 | 사이드바·탭·카드 디자인이 단조롭고 정보 우선순위 모호 | **디자인 v2** — 사이드바 워크스페이스 스위처(서류 체커/아이디어 검증) + 그룹 라벨 + 하단 계정 카드, 매칭 카드 쿠폰 절취선 (좌측 본문 / 우측 비교 zone), 3단계 서류 상태 pill (완비·위험·부족), 홈 화면 2열 + 상단 일정 그리드 카드 |
+| 매칭은 되는데 "그래서 뭘 해야 하지" 가 모호 | **🧭 맞춤 플랜 (엔드 투 엔드)** — 가중치 슬라이더로 Top N 추천 정렬 (지원금/노력/마감) → ✨ "왜 이게 맞는지" narrative → "+ 담기" → AI 액션 가이드 (이번주/다음주/그 이후 + 발급처 인용 + 분석된 PDF의 평가/의무까지 인용) → 통합 타임라인 + 캘린더 일괄 등록 |
 
 ---
 
@@ -65,6 +66,7 @@
 │   ├── auth.py                   ← 카카오/Google/Naver OAuth + HMAC 쿠키 + Calendar 토큰 관리
 │   ├── checker.py                ← 서류 만료 계산 + 발급 태스크
 │   ├── matcher.py                ← 공고 ↔ 보유 서류 + 프로필 매칭 + 공고 유형 분류 (6개 묶음)
+│   ├── planner.py                ← 🧭 맞춤 플랜 (Top N + 가중치 + LLM narrative + 액션 가이드 A/B/C)
 │   ├── attach_fetcher.py         ← 공고 페이지 URL → 첨부 PDF 자동 수집 (K-Startup/NRF/NTIS)
 │   ├── document_master.py        ← 30개 정부 서류 마스터 데이터
 │   ├── eligibility_extractor.py  ← 비-K-Startup 공고 자격 메타 LLM 추출
@@ -197,7 +199,7 @@ K-Startup 250건 기준 약 2~3분.
 
 ---
 
-## 🧭 화면 구성 (6개 탭)
+## 🧭 화면 구성 (7개 탭)
 
 > 🎨 **디자인 v2 공통**: 좌측 고정 사이드바 + 워크스페이스 스위처 (서류 체커 / 아이디어 검증) + 그룹 라벨 (탐색·마이페이지) + 하단 계정 카드 (아바타·기업명·로그아웃). 상단 topbar 제거. 각 페인 타이틀은 28px 세리프 (`--serif-ko`).
 
@@ -218,6 +220,18 @@ K-Startup 250건 기준 약 2~3분.
    - **📋 통합 요약**: 폴더 안 모든 PDF의 7카테고리를 한꺼번에 그룹별 표시
    - **📅 일정 추출**: 폴더 내 PDF 들의 일정을 LLM 없이 Python merge + dedup
    - **💬 폴더 Q&A**: PDF 본문 기반 자유 채팅
+
+5.5. **🧭 맞춤 플랜 (엔드 투 엔드)** — 추천부터 일정/캘린더 등록까지 한 흐름.
+   - **3 슬라이더로 가중치 조정**: 💰 지원금 규모 / ⚡ 노력 회피 / ⏰ 마감 임박 (0~100). 프리셋 4종 (균형 / 고액 / 쉬운 / 마감 우선). 변경 시 debounce 300ms 후 자동 재호출 + 재정렬.
+   - **Top N 추천 카드** (3/5/10 선택): 자격 매칭 + 보유 서류 + 지원금 규모 + 노력 등급 + D-day 종합 점수. 각 카드에 💰 amount + ⚙️ effort 배지, 점수 hover tooltip 으로 raw score 분해(profile + urgency + amount − effort).
+   - **✨ AI narrative**: 각 카드 헤더 아래 "왜 이 공고가 당신에게 맞는지" 한 줄 (백그라운드 Gemini Flash Lite, 캐시 적중 시 ₩0).
+   - **"+ 내 플랜에 담기"** 토글 → 담은 공고들만 아래에 모임. 카드 외곽 accent 강조.
+   - **AI 액션 가이드** (700ms debounce 후 자동 호출): 담은 공고 종합해 ⚠️ key_warning + **이번 주 (긴급) / 다음 주 (중요) / 2주 후 (여유)** 시간 구간별 액션 카드. Step A → B → C 누적:
+     - **A**: 보유/만료/임박/미보유 서류 명단 + 발급처 인용 (정부24/홈택스/위택스/4대보험)
+     - **B**: 자격 매칭 reasons detail + 공고 유형/지원금/노력 등급 활용한 작업 강도 안내 ("R&D 15억원 → 다음 주는 사업계획서에 시간 확보")
+     - **C**: 담은 공고에 분석된 PDF 있으면 평가 기준·의무사항·지원금 상세·유의사항까지 인용 ("기술성 40%, 사업성 30%" / "협약 후 2년 정규직 의무"). 가이드 헤더에 `📄 PDF N건 활용` 배지로 시그널.
+   - **통합 액션 타임라인**: 담은 공고들의 발급 태스크 + 신청 마감 시간순. 같은 서류는 가장 빠른 due 로 dedup ("N개 공고 공통" 라벨).
+   - **🗓️ Google / N 네이버 캘린더 일괄 등록**: 선택 체크박스 + 전체/발급만/마감만 필터 + 기존 `/api/calendar/*/insert` 재사용.
 6. **📅 캘린더** — 월간 그리드, 공고 일정 + 보유 서류 만료일 통합 표시. **모던 리뉴얼 (v2)**.
    - **주 단위 Timeline Bar**: 기간 이벤트(접수기간 등)는 매일 칩으로 도배되지 않고 **연속 막대**로 표시 (Google Calendar 종일 일정 스타일). 주 경계 잘림은 `‹` `›` 마커.
    - **색 시스템**: bar 색 = 폴더(공고)별 고유 색 → 같은 공고 한눈에 묶임. 좌측 액센트 strip + 카테고리 아이콘 prefix(📝 접수·🏆 발표·📊 평가·📋 서류·🤝 협약). 마감 D-7 이내는 **빨강 펄스 D-day 배지**.
@@ -278,6 +292,9 @@ K-Startup 250건 기준 약 2~3분.
 | POST | `/api/match` | 공고 자격 + 서류 매칭 + 프로필 점수 |
 | GET | `/api/ics/announcements?source=...` | 공고 마감일 ICS |
 | POST | `/api/ics/tasks` | 발급 태스크 ICS |
+| GET | `/api/plan?top_n=5&w_amount=0.5&w_effort=0.3&w_urgency=0.5` | **맞춤 플랜 (LLM 없음)** — 자격 매칭 + 가중치 기반 Top N + 부족 서류 + 발급 태스크. 슬라이더 변경 시 호출. signals(amount_display, effort_label, req_doc_count) + profile_fit reasons 포함 |
+| POST | `/api/plan/narrative` | **각 카드 한 줄 narrative** (Gemini Flash Lite). Body: `{plan: {...}}` → `{narratives: {ann_id_str: "..."}, cached, count}`. 캐시 키 = user + sorted(ann_ids) + weights. 같은 슬라이더 조합 두 번 → ₩0 |
+| POST | `/api/plan/guide` | **AI 액션 가이드** (Gemini Flash Lite). Body: `{plan, picked_ids}` → `{sections, key_warning, cached, picked_count, pdf_analyzed_count}`. Step A/B/C 누적: 서류 명단 + 발급처 / 자격 reasons + 유형/지원금/노력 / 분석된 PDF 의 평가·의무·지원금 상세. 캐시 키에 시스템 프롬프트 sha + 담은 공고의 PDF hash 포함 → 프롬프트 수정·PDF 추가삭제 시 자동 invalidate |
 
 ### 인증 + 프로필 (3-provider OAuth)
 
@@ -352,7 +369,7 @@ K-Startup 250건 기준 약 2~3분.
 
 ---
 
-## 🧠 LLM 사용처 (7종)
+## 🧠 LLM 사용처 (9종)
 
 | # | 함수 | 트리거 | 입력 | 토큰 (전형) | 비용/회 | 캐시 |
 |---|---|---|---|---|---|---|
@@ -363,6 +380,8 @@ K-Startup 250건 기준 약 2~3분.
 | 5 | `chat_compare` | `/api/compare/chat` | (캐시) + 히스토리 + 질문 | 변동분 2~5K | ₩2~3 | #4 캐시 재사용 |
 | 6 | `scan_doc_image` | `/api/docs/scan` | 이미지 1장 | 1K | ₩1~2 | 없음 |
 | 7 | `extract_llm_eligibility` | `backfill_eligibility.py` | 공고 본문 | 1~10K | ₩0.5~3 | 없음 (1회성) |
+| 8 | `generate_recommendation_narratives` | `/api/plan/narrative` | profile(safe) + 추천 카드 N개 라이트 라인 + 가중치 | 2~5K | ₩1~3 | derived (user + ann_ids + weights) |
+| 9 | `generate_action_guide` | `/api/plan/guide` | profile + 담은 공고 풀 컨텍스트(서류 4분할 + 자격 reasons + 유형/지원금/노력) + 통합 발급 태스크 + (있으면) PDF 분석 요약 | 3~15K | ₩2~8 | derived (sys_hash + user + picked + today + PDF hashes) |
 
 ### 비용 시나리오
 
@@ -374,6 +393,10 @@ K-Startup 250건 기준 약 2~3분.
 | 정밀 비교 시작 (PDF 3개) | ₩1~5 (#4, 캐시 + 요약) |
 | 비교 채팅 10회 (10분 내) | ₩20~30 (#5 × 10, 캐시 적중) |
 | 발급내역 이미지 OCR | ₩1~2 (#6) |
+| 맞춤 플랜 첫 호출 (Top 5 narrative + 가이드) | ₩3~10 (#8 + #9) |
+| 슬라이더 조정 (같은 조합 재호출) | ₩0 (캐시 적중) |
+| 같은 picked + 같은 날짜 가이드 재호출 | ₩0 (캐시 적중) |
+| PDF 분석된 공고 5개 담아 가이드 (Step C 본격) | ₩8~15 (#9, PDF 요약 5건 결합) |
 
 ---
 
@@ -515,6 +538,7 @@ ngrok http 8765
 | 홈 화면 컴팩트 일정 카드 + 2열 레이아웃 | ✅ `.home-sched-grid` (색 D-day 블록 urgent/imm/calm) + `.home-cols` |
 | 둘러보기 유형 필터 + 매칭과 독립 상태 | ✅ `_browseActiveTypes` Set, `#browse-type-filter` 칩 |
 | 프로필 페이지 3섹션 분리 + 사이드바 하단 진입 | ✅ 기본 정보·소재지/연락처·업종, 사이드바에 profile 탭 없음 — 계정 카드 클릭으로만 진입 |
+| 🧭 맞춤 플랜 (엔드 투 엔드: 추천 → 가중치 → narrative → 담기 → 가이드 → 타임라인 → 캘린더) | ✅ `planner.py` `compose_action_plan` + `generate_recommendation_narratives` + `generate_action_guide` (Step A/B/C 누적). PDF 분석 결과까지 결합 |
 
 ---
 

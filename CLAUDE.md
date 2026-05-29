@@ -6,13 +6,50 @@
 
 ## 한 줄 오리엔테이션
 
-정부지원사업 4개 사이트 통합 매칭 + PDF LLM 분석 + 카카오/Google/Naver 3-provider 로그인 + Google/Naver 캘린더 직접 등록. 단일 Python `http.server` + SQLite + 단일 SPA (`dashboard.html`).
+정부지원사업 4개 사이트 통합 매칭 + PDF LLM 분석 + 카카오/Google/Naver 3-provider 로그인 + Google/Naver 캘린더 직접 등록 + **엔드 투 엔드 맞춤 플랜** (추천→가중치→narrative→담기→가이드→캘린더). 단일 Python `http.server` + SQLite + 단일 SPA (`dashboard.html`).
+
+---
+
+## ★ 개발 워크플로 (사용자 명시 — 이 패턴 그대로 유지)
+
+**작업 → 커밋 → 푸쉬를 한 흐름으로 진행한다.** 사용자에게 "커밋해도 되나요?" 묻지 말 것.
+
+```
+[코드 수정] → [Bash: git add 파일들] → [Bash: git commit -m "..."]
+              → [Bash: git push origin main] → [한 줄 안내: AWS deploy 실행 권장]
+```
+
+**Why**: 사용자가 도메인을 AWS 서버에 연결해놨고 `idea-ro` systemd 서비스로 상시 가동 중. push 안 하면 사용자가 변화를 볼 수 없음. 그래서 사용자가 묻기 전에 push 까지 한 흐름이 기본.
+
+**예외**:
+- 사용자가 "커밋만 하고 push 는 하지 마" 명시 시 그대로 따름
+- 큰 변경 (300줄 이상 또는 여러 파일) 은 사전 계획 보여주고 ok 받은 후 작업 → 작업 시작했으면 push 까지 자동 진행
+- `.env` / 시크릿 / DB 파일 같은 gitignored 파일은 git add 금지
+
+**커밋 메시지 컨벤션**:
+- `feat:` 신규 기능 / `fix:` 버그 / `style:` UI·CSS / `docs:` 문서 / `refactor:`
+- 한국어 본문 + 핵심 한 줄 + 이유 + 영향
+- 마지막에 `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>`
+- HEREDOC `$(cat <<'EOF'...EOF)` 패턴 사용 (개행 보존)
+
+**Push 후 안내** (한 줄):
+```
+AWS 에서 `deploy` (또는 `cd ~/IDEA-RO && git pull && sudo systemctl restart idea-ro`) 실행해주세요.
+```
+- HTML/CSS 만 바뀐 경우는 "강력 새로고침(Ctrl+F5)만으로도 반영" 으로 보강
+- `web.py` 라우트 / `planner.py` Python 코드 바뀌면 **반드시 systemctl restart**
+- 사이트: https://idea-ro.site
+
+**Step-by-step 시연 흐름**:
+- 사용자는 큰 기능을 작은 step 으로 쪼개서 한 번에 1단계씩 진행하길 선호함 (예: 맞춤 플랜 Step 1 → 2 → 2.5 → 3 → 4 → 5 → A → B → C)
+- 각 step 끝에 짧은 동작 검증 + commit + push + 다음 step 시작 여부 확인
+- "한 번에 다 짜줘" 보다 단계적 누적이 디버깅·rollback 쉬움
 
 ---
 
 ## 핵심 아키텍처 결정 (절대 깨지 마세요)
 
-### 캐싱 4층 — 변경 시 비용/지연 영향 큼
+### 캐싱 5층 — 변경 시 비용/지연 영향 큼
 
 | Layer | 위치 | 키 | 무효화 |
 |---|---|---|---|
@@ -20,8 +57,10 @@
 | 2. 텍스트 추출 | `planner/storage/extracts/{hash}.txt` | PDF hash | 수동 |
 | 3. derived (폴더 단위) | `planner/storage/derived/{key}.json` | 폴더ID + PDF hash 정렬 | 컨텐츠 해시 (자동) |
 | 4. Gemini 명시 캐시 | Gemini 서버측 | 비교 세션 (announcement_ids + profile) | TTL 10분 자동 |
+| 5. **맞춤 플랜 derived** | `planner/storage/derived/plan_{narrative\|guide}_{user_id}_{hash}.json` | narrative: user + ann_ids + weights / guide: **sys_prompt sha + user + picked + today + PDF hashes** | guide 는 **시스템 프롬프트 수정 시 자동 invalidate** (sha 포함) + PDF 추가/삭제 시 자동 invalidate |
 
 → **새 LLM 호출 추가 시 항상 캐싱 가능 여부 검토**. 같은 입력 두 번 → 캐시 미스면 비용/지연 두 배.
+→ **시스템 프롬프트 변경 후 캐시 invalidate 가 필요한 모든 함수는 키에 `hashlib.sha256(_SYSTEM_PROMPT).hexdigest()[:6]` 포함**. guide 가 모델 패턴.
 
 ### 분석 스키마 버전 (`SCHEMA_VERSION`)
 
@@ -132,6 +171,21 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 2. `classifyCalEvent(ev)` 의 `TYPE_MAP` (정형 type 컬럼) 또는 제목 키워드 분기에 추가
 3. **합성어 주의** — "서류평가" 는 evaluation 으로 가야 함. `평가/심사` 가 `서류` 보다 먼저 매칭되게 순서 유지
 
+### 맞춤 플랜에 새 신호 (signal) / 가이드 컨텍스트 추가
+
+새 정보를 narrative 또는 guide LLM 입력에 추가하려면 다음 순서:
+
+1. **`planner/planner.py` 의 `compose_action_plan`**:
+   - 1단계 (light score) 에서 계산 가능하면 `signals[...]` 에 추가
+   - 2단계 (Top N detail) 에서 계산 가능하면 거기에 추가
+   - 추천 응답 dict 의 적절한 키에 노출
+2. **`_NARRATIVE_USER_TMPL` / `_GUIDE_USER_TMPL`** 의 카드 직렬화 함수 (`_card_for_narrative`, `_picked_card_block`) 에 새 정보 줄 추가
+3. **`_NARRATIVE_SYSTEM` / `_GUIDE_SYSTEM` 프롬프트** 에 사용 가이드 추가 (예: "지원금 ≥1억원 + 노력 '높음' → 다음 주 가이드에 사업계획서 시간 명시")
+4. **응답 검증** — `generate_xxx(user_id, plan, use_cache=False)` 로 호출해 새 정보가 실제 반영되는지 확인
+5. **캐시 키 자동 invalidate** — 시스템 프롬프트 변경됐으므로 `_guide_cache_key` 의 `sys_hash` 가 자동 갱신 (별도 작업 X)
+
+→ Step A/B/C 가 이 패턴의 살아있는 예시. 매번 새 신호 추가 시 같은 순서 따라가면 됨.
+
 ### 공고 페이지 URL 첨부 자동 수집 흐름
 
 사용자가 매칭 카드의 📎 PDF → URL 탭에서 K-Startup/NRF/NTIS 공고 URL 붙여넣기:
@@ -139,6 +193,70 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 2. 프론트가 PDF 만 선택 가능하게 체크박스 표시 (HWP 등은 disabled)
 3. 사용자 선택 → `POST /api/attachments/import-url` 반복 호출 (1건씩 download_to_bytes → analyze_pdf → DB)
 4. **Synap 뷰어 URL 직접 처리 X** — K-Startup `a.btn_down[href]` 의 다운로드 URL 사용 (`/afile/fileDownload/{key}`)
+
+### 맞춤 플랜 (엔드 투 엔드) — Pipeline 구조와 누적 단계
+
+**위치**: [planner/planner.py](planner/planner.py) + [web.py](planner/web.py) `_handle_plan`/`_handle_plan_narrative`/`_handle_plan_guide` + [dashboard.html](public/dashboard.html) `loadPlan`/`renderPlan`/`_fetchPlanGuideAsync`.
+
+**전체 흐름**:
+```
+[GET /api/plan?top_n=...&w_amount=...&w_effort=...&w_urgency=...]
+    ↓ compose_action_plan(user_id, top_n, weights)
+    ↓ Pipeline:
+    ↓  1) DB 로드 (profile + my_docs + 진행중 공고)
+    ↓  2) 모든 자격 통과 공고에 light score
+    ↓     (profile_fit + urgency*w_urgency + amount*w_amount - effort_light*w_effort)
+    ↓  3) Top N detail match (match_announcement) → effort 보정 → 최종 정렬
+    ↓ → Top N 카드 (signals 포함)
+즉시 표시
+    ↓
+[POST /api/plan/narrative {plan}]  ← 카드 즉시 표시 후 백그라운드
+    ↓ generate_recommendation_narratives → 카드별 한 줄
+    ↓
+[사용자 "+ 내 플랜에 담기" → 700ms debounce]
+    ↓
+[POST /api/plan/guide {plan, picked_ids}]
+    ↓ generate_action_guide (Step A→B→C 누적)
+    ↓  · A: missing/fulfilled/expired/expiring docs 명단 + 발급처 매핑
+    ↓  · B: profile_fit.reasons + 유형/지원금/노력
+    ↓  · C: 담은 공고의 PDF 분석 (analyses/{hash}.json) → format_analysis_summary
+```
+
+**가중치 점수 공식** (compose_action_plan):
+```
+combined = int(profile_fit.score)
+         + int(urgency_score * w_urgency)
+         + int(amount_score  * w_amount)
+         - int(effort_score  * w_effort)
+```
+- 슬라이더 0~100 → 백엔드 0~1 변환
+- 각 점수의 base 범위: profile 0~100, urgency 0~30, amount 0~30, effort 0~30
+
+**LLM 호출 캐시 키 패턴** (모방용 템플릿):
+```python
+# 1) 시스템 프롬프트 해시를 키에 포함 → 프롬프트 수정 시 자동 invalidate
+sys_hash = hashlib.sha256(_SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:6]
+# 2) 사용자 + 입력의 핵심 식별자 + 날짜(필요 시)
+parts = [sys_hash, str(user_id), today.isoformat(), ",".join(sorted(input_ids))]
+# 3) 추가 입력 (예: PDF hash) 도 키에 포함 → 컨텐츠 바뀌면 자동 invalidate
+parts.append(",".join(sorted(pdf_hashes)))
+key = f"plan_xxx_{user_id}_{hashlib.sha256('|'.join(parts).encode()).hexdigest()[:16]}"
+```
+
+**Step C — 공고 ↔ PDF 분석 매핑**:
+```
+announcement_id → attachment_folders.announcement_id == ann_id AND user_id == user_id
+              → folder_ids 의 uploaded_attachments.file_hash 들 (status='ok')
+              → planner/storage/analyses/{file_hash}.json
+              → format_analysis_summary 로 잔축 (한 PDF 당 ~1~2K 토큰)
+```
+- 분석 없는 공고는 graceful — Step B 동작과 동일, 사용자 체감 무리 없음
+- 프론트는 `pdf_analyzed_count > 0` 일 때만 `📄 PDF N건 활용` 배지 노출
+
+**컨설팅 톤 원칙 (사용자 명시)**:
+- narrative: "X가 베스트" 단정 금지. 측면별 매칭 포인트만. ([prompts COMPARE_SYSTEM_PROMPT 원칙과 동일](planner/analyzer/prompts.py))
+- guide: 동사 명령형 ("~하세요"), 추상 표현 금지 ("지원서류 준비" X → "사업자등록증명 발급" O)
+- 발급처 매핑: 정부24 / 홈택스 / 위택스 / 4대보험 (잘 모르면 정부24)
 
 ### 디자인 v2 — 사이드바 / 카드 / 프로필 입히기 원칙
 
@@ -187,6 +305,14 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 | **사이드바에 `data-tab="profile"` 탭 버튼 추가** | profile 은 사이드바에 없음 — `#sb-acc-profile` (계정 카드) 클릭 핸들러로만 진입 |
 | **워크스페이스 nav 토글을 JS 로 매번 show/hide** | `[data-workspace=...]` 속성 + CSS 셀렉터로 토글 (`setWorkspace()` 가 속성만 변경) |
 | **홈 다가오는 일정에 D-day 색을 단일 색으로** | urgent (≤3) / imm (≤7) / calm 3단계 그라데이션으로 우선순위 시각화 |
+| **맞춤 플랜 LLM 캐시 키에 시스템 프롬프트 미반영** | 프롬프트 수정해도 옛 가이드 응답 → 키에 `hashlib.sha256(_SYSTEM_PROMPT)[:6]` 포함 필수 |
+| **맞춤 플랜 가이드를 추천 즉시 호출** | 카드 즉시 표시 후 백그라운드로 narrative, "+ 담기" 후 700ms debounce 로 guide — non-blocking |
+| **맞춤 플랜 슬라이더 변경마다 즉시 LLM 호출** | 슬라이더는 debounce 300ms 후에만 `/api/plan` 재호출. narrative/guide 는 결과 도착 후 별도 트리거 |
+| **맞춤 플랜 narrative 에 사용자 PII 전송** | `_profile_for_narrative` 의 safe 필드만 (company_name·business_type·establishment_date·region·industry·founding_type). 사업자번호/전화/이메일 X |
+| **맞춤 플랜 가이드에 "X가 베스트" 단정** | 동사 명령형 "~하세요" + 측면별 매칭 인용 (`COMPARE_SYSTEM_PROMPT` 원칙과 동일) |
+| **맞춤 플랜 가이드의 발급처를 LLM 이 추정** | 시스템 프롬프트로 명시 매핑 강제: 주민등록=정부24 / 사업자등록·납세=홈택스 / 지방세=위택스 / 4대보험=4대사회보험정보연계센터 |
+| **PDF 분석 결과를 RAW JSON 으로 LLM 에 송신** | `format_analysis_summary` 로 잔축 (한 PDF 1~2K 토큰). 5개 공고 결합도 5~10K 로 통제 |
+| **맞춤 플랜 캘린더 등록을 새 API 로 구현** | 기존 `/api/calendar/{provider}/insert` + `_pushEventsToProvider(events, provider)` 헬퍼 그대로 재사용 — events 페이로드만 통합 타임라인에서 생성 |
 
 ---
 
@@ -216,6 +342,10 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 | 사용자별 보유 서류 | [web.py](planner/web.py) `_handle_my_docs_list`/`_save` |
 | 매칭 로직 | [matcher.py](planner/matcher.py) `compute_profile_fit`, `match_announcement` |
 | **공고 유형 분류 (6묶음)** | [matcher.py](planner/matcher.py) `classify_announcement_type` + `ANNOUNCEMENT_TYPE_INFO` |
+| **🧭 맞춤 플랜 (엔드 투 엔드)** | [planner.py](planner/planner.py) `compose_action_plan`, `generate_recommendation_narratives`, `generate_action_guide` |
+| **맞춤 플랜 — 지원금 추출 / 노력 추정** | [planner.py](planner/planner.py) `_extract_amount_won` (regex 4단계), `_estimate_effort` (유형 base + 서류 수) |
+| **맞춤 플랜 — PDF 분석 결합 (Step C)** | [planner.py](planner/planner.py) `_load_analyses_for_announcement` (DB join) + `_summarize_analyses` (format_analysis_summary 재사용) |
+| **맞춤 플랜 — 프론트** | [dashboard.html](public/dashboard.html) `loadPlan`, `_renderPlanCard`, `_buildPlanTimeline`, `_fetchPlanNarrativesAsync`, `_fetchPlanGuideAsync`, `togglePlanPick` |
 | **공고 URL → 첨부 PDF 스크랩** | [attach_fetcher.py](planner/attach_fetcher.py) `scan_attachments_from_url`, `download_to_bytes` |
 | 서류 마스터 (30개) | [document_master.py](planner/document_master.py) |
 | 프론트 (6탭 SPA) | [public/dashboard.html](public/dashboard.html) |
@@ -230,6 +360,7 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 
 ## 운영 빠른 명령
 
+### 로컬
 ```bash
 # 서버 시작
 python -m planner.web
@@ -245,4 +376,37 @@ $pids = (netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING") | ForEach
 $pids | ForEach-Object { try { Stop-Process -Id $_ -Force -ErrorAction Stop } catch {} }
 ```
 
-서버 주소는 **반드시 `http://127.0.0.1:8765`** (localhost X).
+### AWS (배포)
+```bash
+# 한 줄 (사용자가 alias 등록한 상태)
+deploy
+
+# 풀 명령
+cd ~/IDEA-RO && git pull && sudo systemctl restart idea-ro
+
+# 서비스 상태 확인
+sudo systemctl status idea-ro --no-pager
+
+# 로그
+sudo journalctl -u idea-ro -n 50 --no-pager
+```
+
+### 주소
+- 로컬: **반드시 `http://127.0.0.1:8765`** (localhost X — Naver OAuth 강제)
+- 운영: https://idea-ro.site (AWS Lightsail + Cloudflare Named Tunnel — 도메인 가비아)
+
+### Step-by-step LLM 검증 (script)
+```bash
+# .env 강제 로드 + 새 LLM 함수 동작 검증 (캐시 우회)
+python -c "
+from planner.analyzer.dotenv import load_dotenv
+load_dotenv()
+from planner.planner import compose_action_plan, generate_action_guide
+plan = compose_action_plan(USER_ID, top_n=5)
+picked = [plan['recommendations'][0]['announcement_id']]
+out = generate_action_guide(USER_ID, plan, picked, use_cache=False)
+print(out['key_warning'])
+for s in out['sections']:
+    for it in s['items']: print(it)
+"
+```
