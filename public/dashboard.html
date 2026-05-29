@@ -1344,6 +1344,71 @@
     padding-bottom: 14px; border-bottom: 1px dashed var(--border);
   }
 
+  /* Phase 3: 매칭 카드 펼침 시 자동 분석 결과 블록 */
+  .auto-analysis-mount { margin-top: 8px; }
+  .aa-block {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin: 8px 0 12px;
+    background: linear-gradient(180deg, #fff7eb 0%, #fffaf3 100%);
+  }
+  .aa-block.aa-loading {
+    color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px;
+    background: var(--bg-subtle);
+  }
+  .aa-block.aa-error {
+    color: #B91C1C; background: #FEF2F2; font-size: 12px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .aa-block.aa-empty {
+    background: var(--bg-subtle); border-style: dashed; color: var(--muted);
+  }
+  .aa-spinner {
+    width: 12px; height: 12px; border: 2px solid #FCD34D; border-top-color: transparent;
+    border-radius: 50%; display: inline-block; animation: aa-spin 0.8s linear infinite;
+  }
+  @keyframes aa-spin { to { transform: rotate(360deg); } }
+  .aa-block-head {
+    font-weight: 700; font-size: 12.5px; color: #C2410C;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .aa-block-counts {
+    font-weight: 500; font-size: 11px; color: var(--muted);
+  }
+  .aa-block-sub { font-size: 12px; margin-top: 4px; color: var(--muted); }
+  .aa-stats {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+  }
+  .aa-stat {
+    background: rgba(217, 82, 26, 0.12); color: #C2410C;
+    padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  }
+  .aa-stat.aa-stat-warn { background: #FEE2E2; color: #B91C1C; }
+  .aa-files { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .aa-file {
+    display: flex; align-items: center; gap: 8px; font-size: 12px;
+    padding: 5px 8px; background: white; border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  .aa-file-ico { flex-shrink: 0; }
+  .aa-file-name { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .aa-file-fmt {
+    background: var(--bg-subtle); color: var(--muted);
+    padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;
+  }
+  .aa-file-sub { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+  .aa-file-fail { color: #B91C1C; }
+  .aa-block-foot {
+    margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(0,0,0,0.08);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .aa-block-hint { font-size: 11px; color: var(--muted); }
+  .aa-trigger-btn, .aa-retry-btn {
+    border: 1px solid var(--accent); background: white; color: var(--accent);
+    padding: 4px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+    cursor: pointer;
+  }
+  .aa-trigger-btn:hover, .aa-retry-btn:hover { background: var(--accent-soft); }
+
   /* 공고 둘러보기 — Phase 2: 모드 토글 (전체 목록 vs 자격 맞춤) */
   .browse-mode-toggle {
     display: inline-flex; gap: 4px;
@@ -5392,7 +5457,7 @@ async function renderAnnouncements() {
       ddCls = "urgent";
     }
     return `
-      <div class="${cardClsFinal}" id="ann-${idx}">
+      <div class="${cardClsFinal}" id="ann-${idx}" data-ann-id="${a.id}">
         <div class="match-main">
           <div class="a-head" onclick="_matchHeadClick(event, ${idx})">
             <div class="a-head-info">
@@ -5426,6 +5491,9 @@ async function renderAnnouncements() {
           <div class="match-detail" id="detail-${idx}">
           ${(match.notes || []).map(n =>
             `<div class="notes-box"><span class="nt-label">참고:</span>${escapeHtml(n)}</div>`).join("")}
+
+          <!-- Phase 3: 자동 분석 결과 (펼침 시 GET /api/announcements/{id}/auto-attachments) -->
+          <div class="auto-analysis-mount" id="auto-analysis-${idx}"></div>
 
           <div class="section-h">요구 서류 매칭</div>
           ${match.required_docs.map(d => `
@@ -5478,7 +5546,142 @@ function _matchHeadClick(e, idx) {
 }
 
 function toggleMatchDetail(idx) {
-  document.getElementById(`ann-${idx}`).classList.toggle("expanded");
+  const card = document.getElementById(`ann-${idx}`);
+  const wasExpanded = card.classList.contains("expanded");
+  card.classList.toggle("expanded");
+  // Phase 3: 처음 펼침 시점에 자동 분석 결과 로드 (한 번만)
+  if (!wasExpanded) loadAutoAnalysisForCard(idx);
+}
+
+// ─── Phase 3: 매칭 카드 펼침 시 자동 분석 결과 인라인 표시 ────────────────
+// 캐시 정책: mount DOM 의 내용이 비어있을 때만 fetch (re-render 후 자동 재요청).
+async function loadAutoAnalysisForCard(idx) {
+  const mount = document.getElementById(`auto-analysis-${idx}`);
+  const card  = document.getElementById(`ann-${idx}`);
+  if (!mount || !card) return;
+  if (mount.innerHTML.trim()) return;  // 이미 로드/로딩 중
+  const annId = parseInt(card.dataset.annId, 10);
+  if (!annId) return;
+
+  mount.innerHTML = `
+    <div class="aa-block aa-loading">
+      <span class="aa-spinner"></span>자동 수집 자료 확인 중...
+    </div>`;
+
+  try {
+    const res = await fetch(`/api/announcements/${annId}/auto-attachments`, { credentials: "include" });
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    mount.innerHTML = renderAutoAnalysisBlock(data, annId);
+  } catch (e) {
+    mount.innerHTML = `
+      <div class="aa-block aa-error">
+        자동 분석 결과를 불러오지 못했어요. (${escapeHtml(String(e))})
+        <button class="aa-retry-btn" onclick="(function(){ const m=document.getElementById('auto-analysis-${idx}'); if(m) m.innerHTML=''; loadAutoAnalysisForCard(${idx}); })()">다시 시도</button>
+      </div>`;
+  }
+}
+
+function renderAutoAnalysisBlock(data, annId) {
+  const attachments = data.attachments || [];
+  if (!attachments.length) {
+    return `
+      <div class="aa-block aa-empty">
+        <div class="aa-block-head">📊 자동 수집된 자료 없음</div>
+        <div class="aa-block-sub">백그라운드에서 공고 페이지를 분석 중일 수 있어요. 잠시 후 다시 펼쳐주세요.</div>
+        <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId})">🚀 지금 분석 시작</button>
+      </div>`;
+  }
+  // 그룹화
+  const done    = attachments.filter(x => x.status === "done");
+  const skipped = attachments.filter(x => x.status === "skipped");
+  const failed  = attachments.filter(x => x.status === "failed");
+
+  const doneCount = done.length;
+  const totalEligibility    = done.reduce((s,x) => s + ((x.analysis?.eligibility?.items   || []).length), 0);
+  const totalSchedule       = done.reduce((s,x) => s + ((x.analysis?.schedule?.items      || []).length), 0);
+  const totalSupportAmount  = done.reduce((s,x) => s + ((x.analysis?.support_amount?.items|| []).length), 0);
+  const totalRequiredDocs   = done.reduce((s,x) => s + ((x.analysis?.required_docs?.items || []).length), 0);
+  const totalEvaluation     = done.reduce((s,x) => s + ((x.analysis?.evaluation?.items    || []).length), 0);
+  const totalObligations    = done.reduce((s,x) => s + ((x.analysis?.obligations?.items   || []).length), 0);
+  const totalWarnings       = done.reduce((s,x) => s + ((x.analysis?.warnings?.items      || []).length), 0);
+
+  const fileListHtml = attachments.map(x => {
+    const ico = x.status === "done" ? "✅" : (x.status === "skipped" ? "⏭️" : "❌");
+    const fmt = x.file_format ? ` <span class="aa-file-fmt">${escapeHtml(x.file_format.toUpperCase())}</span>` : "";
+    const sub = x.status === "done"
+      ? `<span class="aa-file-sub">분석 완료</span>`
+      : x.status === "skipped"
+        ? `<span class="aa-file-sub">${escapeHtml(x.skipped_reason === "unsupported_format" ? "지원하지 않는 형식 (HWP 등)" : (x.skipped_reason || "건너뜀"))}</span>`
+        : `<span class="aa-file-sub aa-file-fail">${escapeHtml((x.error_message || "다운로드/분석 실패").slice(0,80))}</span>`;
+    return `
+      <div class="aa-file">
+        <span class="aa-file-ico">${ico}</span>
+        <span class="aa-file-name">${escapeHtml(x.original_filename || "")}</span>${fmt}
+        ${sub}
+      </div>`;
+  }).join("");
+
+  const statsHtml = doneCount ? `
+    <div class="aa-stats">
+      ${totalEligibility    ? `<span class="aa-stat">자격 ${totalEligibility}</span>` : ""}
+      ${totalSchedule       ? `<span class="aa-stat">일정 ${totalSchedule}</span>` : ""}
+      ${totalSupportAmount  ? `<span class="aa-stat">지원금 ${totalSupportAmount}</span>` : ""}
+      ${totalRequiredDocs   ? `<span class="aa-stat">서류 ${totalRequiredDocs}</span>` : ""}
+      ${totalEvaluation     ? `<span class="aa-stat">평가 ${totalEvaluation}</span>` : ""}
+      ${totalObligations    ? `<span class="aa-stat">의무 ${totalObligations}</span>` : ""}
+      ${totalWarnings       ? `<span class="aa-stat aa-stat-warn">유의 ${totalWarnings}</span>` : ""}
+    </div>` : "";
+
+  return `
+    <div class="aa-block">
+      <div class="aa-block-head">
+        📊 자동 분석 결과
+        <span class="aa-block-counts">완료 ${done.length} · 건너뜀 ${skipped.length} · 실패 ${failed.length}</span>
+      </div>
+      ${statsHtml}
+      <div class="aa-files">${fileListHtml}</div>
+      <div class="aa-block-foot">
+        <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId}, true)" title="다시 분석 (캐시 무시)">🔄 다시 분석</button>
+        <span class="aa-block-hint">정확한 분석은 원문 PDF 와 함께 확인하세요. 직접 PDF 첨부는 카드 헤더의 📎 PDF 버튼.</span>
+      </div>
+    </div>`;
+}
+
+async function triggerAutoFetchForAnnouncement(annId, force) {
+  // 사용자 로그인 필요 — POST /api/announcements/{id}/auto-fetch
+  if (!CURRENT_USER) {
+    alert("자동 분석은 로그인 후 사용할 수 있어요.");
+    return;
+  }
+  // 진행 중 상태 표시 — DOM 에서 data-ann-id 로 매칭되는 카드의 mount 영역 찾기
+  const card = document.querySelector(`#announcements-list .announcement-card[data-ann-id="${annId}"]`);
+  const mount = card ? card.querySelector(".auto-analysis-mount") : null;
+  if (mount) {
+    mount.innerHTML = `
+      <div class="aa-block aa-loading">
+        <span class="aa-spinner"></span>공고 페이지를 분석하고 있어요... (1~2분 소요)
+      </div>`;
+  }
+  try {
+    const res = await fetch(`/api/announcements/${annId}/auto-fetch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ force: !!force, max_files: 10 }),
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    if (mount) mount.innerHTML = renderAutoAnalysisBlock(data, annId);
+  } catch (e) {
+    if (mount) {
+      mount.innerHTML = `
+        <div class="aa-block aa-error">
+          자동 분석 실패: ${escapeHtml(String(e))}
+          <button class="aa-retry-btn" onclick="triggerAutoFetchForAnnouncement(${annId}, ${!!force})">다시 시도</button>
+        </div>`;
+    }
+  }
 }
 
 // ─── 공고별 PDF 첨부 (매칭 카드의 📎 PDF 버튼) ────────────────────────────
