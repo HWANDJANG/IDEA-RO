@@ -1344,6 +1344,29 @@
     padding-bottom: 14px; border-bottom: 1px dashed var(--border);
   }
 
+  /* 공고 둘러보기 — Phase 2: 모드 토글 (전체 목록 vs 자격 맞춤) */
+  .browse-mode-toggle {
+    display: inline-flex; gap: 4px;
+    background: var(--bg-subtle); padding: 4px; border-radius: 10px;
+    margin-top: 16px; margin-bottom: 4px;
+  }
+  .browse-mode-toggle .bmt-btn {
+    border: none; background: transparent; cursor: pointer;
+    padding: 8px 16px; border-radius: 7px;
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .browse-mode-toggle .bmt-btn:hover { color: var(--text); }
+  .browse-mode-toggle .bmt-btn.active {
+    background: white; color: var(--accent);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  .browse-mode-view[hidden] { display: none !important; }
+  .browse-mode-hint {
+    font-size: 12px; color: var(--muted); margin-top: 4px;
+  }
+
   /* 공고 둘러보기 (DocsHunt 톤) */
   .br-toolbar {
     display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
@@ -3328,9 +3351,9 @@
 
     <!-- (Phase 1 통합) 공고 매칭·공고 분석 은 사이드바에서 제외. pane-match / pane-analyze 는
          JS 호환을 위해 DOM 에는 남겨두며, Phase 2~3 에서 '공고 둘러보기' 안으로 흡수 예정.
-         숨김 버튼은 기존 코드가 .click() 으로 호출하는 경우의 fallback 으로만 둔다. -->
-    <button class="tab-btn" data-tab="match"   style="display:none" aria-hidden="true"></button>
-    <button class="tab-btn" data-tab="analyze" style="display:none" aria-hidden="true"></button>
+         숨김 버튼 + count span 은 기존 JS 의 .click() / textContent 호출 호환용. -->
+    <button class="tab-btn" data-tab="match"   style="display:none" aria-hidden="true"><span class="count" id="cnt-match">·</span></button>
+    <button class="tab-btn" data-tab="analyze" style="display:none" aria-hidden="true"><span class="count" id="cnt-attach">0</span></button>
 
     <div class="sb-group-label">마이페이지</div>
     <button class="tab-btn" data-tab="my-docs"><span class="sb-ic">📁</span>내 서류<span class="count" id="cnt-my-docs">0</span></button>
@@ -3487,76 +3510,83 @@
       <h2 class="pane-title">🔍 공고 둘러보기</h2>
       <p style="margin-top:0; color:var(--muted); font-size:12px;">
         K-Startup·NRF 등에서 수집한 진행 중 공고를 한 화면에서 검색·정렬·즐겨찾기할 수 있습니다.
-        정확한 자격은 원문 공고문을 꼭 확인하세요.
+        <b>자격 맞춤</b> 모드로 바꾸면 본인 프로필·보유 서류 기준으로 자격 통과 공고만 카드로 추천해드려요.
       </p>
 
-      <div class="br-toolbar">
-        <div class="br-search">
-          <span class="br-search-ic">🔎</span>
-          <input type="text" id="br-q" placeholder="지원사업명 · 주관기관 검색" oninput="onBrowseSearchInput()">
-        </div>
-        <div class="br-sort" id="br-sort">
-          <button class="br-sort-btn active" data-sort="deadline" onclick="setBrowseSort('deadline')">마감임박</button>
-          <button class="br-sort-btn" data-sort="recent" onclick="setBrowseSort('recent')">최신</button>
-          <button class="br-sort-btn" data-sort="fav" onclick="setBrowseSort('fav')">관심</button>
-        </div>
+      <!-- Phase 2: 모드 토글 — 전체 목록 vs 자격 맞춤 -->
+      <div class="browse-mode-toggle" role="tablist">
+        <button class="bmt-btn active" data-bmode="all" onclick="setBrowseMode('all')" role="tab" aria-selected="true">📋 전체 목록</button>
+        <button class="bmt-btn" data-bmode="match" onclick="setBrowseMode('match')" role="tab" aria-selected="false">🎯 자격 맞춤</button>
+      </div>
+      <div class="browse-mode-hint" id="browse-mode-hint">
+        진행 중인 공고를 검색·정렬해 둘러볼 수 있습니다. 자격 매칭 없이 모든 공고가 표시돼요.
       </div>
 
-      <!-- 유형 필터 칩 (매칭과 동일한 6묶음, 둘러보기 전용 상태) -->
-      <div id="browse-type-filter" class="type-filter-bar"></div>
-
-      <div class="br-meta-row">
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <button class="ghost" onclick="loadBrowseAnnouncements()">🔄 새로고침</button>
+      <!-- 모드 1: 전체 목록 (기존 둘러보기 테이블) -->
+      <div class="browse-mode-view" id="browse-mode-all">
+        <div class="br-toolbar">
+          <div class="br-search">
+            <span class="br-search-ic">🔎</span>
+            <input type="text" id="br-q" placeholder="지원사업명 · 주관기관 검색" oninput="onBrowseSearchInput()">
+          </div>
+          <div class="br-sort" id="br-sort">
+            <button class="br-sort-btn active" data-sort="deadline" onclick="setBrowseSort('deadline')">마감임박</button>
+            <button class="br-sort-btn" data-sort="recent" onclick="setBrowseSort('recent')">최신</button>
+            <button class="br-sort-btn" data-sort="fav" onclick="setBrowseSort('fav')">관심</button>
+          </div>
         </div>
-        <div class="br-meta-status" id="br-status">불러오는 중...</div>
+
+        <!-- 유형 필터 칩 (매칭과 동일한 6묶음, 둘러보기 전용 상태) -->
+        <div id="browse-type-filter" class="type-filter-bar"></div>
+
+        <div class="br-meta-row">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="ghost" onclick="loadBrowseAnnouncements()">🔄 새로고침</button>
+          </div>
+          <div class="br-meta-status" id="br-status">불러오는 중...</div>
+        </div>
+
+        <div class="br-table-wrap">
+          <table class="br-table" id="br-table">
+            <thead>
+              <tr>
+                <th class="br-c-fav">관심</th>
+                <th class="br-c-title">사업명</th>
+                <th class="br-c-dday">마감</th>
+                <th class="br-c-dept">주관기관</th>
+                <th class="br-c-link">공고</th>
+              </tr>
+            </thead>
+            <tbody id="br-tbody">
+              <tr><td colspan="5" class="br-empty">불러오는 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="br-pager" id="br-pager"></div>
       </div>
 
-      <div class="br-table-wrap">
-        <table class="br-table" id="br-table">
-          <thead>
-            <tr>
-              <th class="br-c-fav">관심</th>
-              <th class="br-c-title">사업명</th>
-              <th class="br-c-dday">마감</th>
-              <th class="br-c-dept">주관기관</th>
-              <th class="br-c-link">공고</th>
-            </tr>
-          </thead>
-          <tbody id="br-tbody">
-            <tr><td colspan="5" class="br-empty">불러오는 중...</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <!-- 모드 2: 자격 맞춤 (기존 공고 매칭 — Phase 2 에서 흡수) -->
+      <div class="browse-mode-view" id="browse-mode-match" hidden>
+        <div style="display:flex; gap:14px; margin-top:14px; flex-wrap:wrap; align-items:center">
+          <button class="ghost" onclick="loadAnnouncements()">🔄 새로고침</button>
+          <label style="margin:0; display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--text); cursor:pointer; font-weight:normal;">
+            <input type="checkbox" id="match-show-ineligible" onchange="renderAnnouncements()"> 자격 안 맞는 공고도 표시
+          </label>
+          <span style="margin-left:auto; color:var(--muted); font-size:12px;" id="match-status"></span>
+        </div>
 
-      <div class="br-pager" id="br-pager"></div>
+        <!-- 유형 필터 칩 (다중 선택, 카운트 표시) -->
+        <div id="type-filter-bar" class="type-filter-bar"></div>
+
+        <div id="announcements-list" style="margin-top:18px"></div>
+      </div>
     </div>
   </section>
 
-  <!-- 탭 2: 공고 매칭 -->
-  <section class="pane" id="pane-match">
-    <div class="panel">
-      <h2 class="pane-title">🎯 맞춤 공고 추천</h2>
-      <p style="margin-top:0; color:var(--muted); font-size:12px;">
-        <b>기업 프로필</b>(업력·지역·사업자 유형) + <b>보유 서류</b>를 기반으로 K-Startup·IRIS 공고를 추천순으로 정렬합니다.
-        IRIS 공고는 자격 메타가 없어 자격 매칭 없이 통과 처리되어 노출됩니다.
-        실제 요구 서류는 첨부 공고문에 적혀 있으므로 <b>최종 확인은 본인 책임</b>입니다.
-      </p>
-
-      <div style="display:flex; gap:14px; margin-top:14px; flex-wrap:wrap; align-items:center">
-        <button class="ghost" onclick="loadAnnouncements()">🔄 새로고침</button>
-        <label style="margin:0; display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--text); cursor:pointer; font-weight:normal;">
-          <input type="checkbox" id="match-show-ineligible" onchange="renderAnnouncements()"> 자격 안 맞는 공고도 표시
-        </label>
-        <span style="margin-left:auto; color:var(--muted); font-size:12px;" id="match-status"></span>
-      </div>
-
-      <!-- 유형 필터 칩 (다중 선택, 카운트 표시) -->
-      <div id="type-filter-bar" class="type-filter-bar"></div>
-
-      <div id="announcements-list" style="margin-top:18px"></div>
-    </div>
-  </section>
+  <!-- (Phase 2 통합) pane-match 는 비워두고 JS 호환 유지용으로만 남김.
+       원본 내용은 위 pane-browse 의 browse-mode-match 안으로 이동했음. -->
+  <section class="pane" id="pane-match" hidden></section>
 
   <!-- 탭 3: 공고 분석 (PDF 업로드 + LLM 추출) -->
   <section class="pane" id="pane-analyze">
@@ -3822,6 +3852,38 @@ function docSelect(value = "") {
   return `<select>${opts}</select>`;
 }
 
+// ─── Phase 2: 둘러보기 모드 토글 (전체 목록 vs 자격 맞춤) ────────────────
+window._browseMode = "all";  // "all" | "match"
+
+const BROWSE_MODE_HINTS = {
+  all:   "진행 중인 공고를 검색·정렬해 둘러볼 수 있습니다. 자격 매칭 없이 모든 공고가 표시돼요.",
+  match: "본인 프로필·보유 서류 기준으로 자격 통과 공고만 카드로 추천합니다. 점수·서류 충족도가 함께 표시돼요.",
+};
+
+function setBrowseMode(mode) {
+  if (mode !== "all" && mode !== "match") return;
+  window._browseMode = mode;
+  // 토글 버튼 active 상태
+  document.querySelectorAll('.browse-mode-toggle .bmt-btn').forEach(b => {
+    const on = b.dataset.bmode === mode;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  // view 가시성
+  const all   = document.getElementById("browse-mode-all");
+  const match = document.getElementById("browse-mode-match");
+  if (all)   all.hidden   = (mode !== "all");
+  if (match) match.hidden = (mode !== "match");
+  // 안내 문구
+  const hint = document.getElementById("browse-mode-hint");
+  if (hint) hint.textContent = BROWSE_MODE_HINTS[mode] || "";
+  // 데이터 로드 (캐시 없을 때만)
+  if (mode === "all" && (!browseCache || !browseCache.length)) loadBrowseAnnouncements();
+  if (mode === "match" && (!announcementsCache || !announcementsCache.length)) loadAnnouncements();
+  // 비교 바 가시성 재계산 (match 모드에서만 노출)
+  if (typeof updateCompareBar === "function") updateCompareBar();
+}
+
 // ─── 탭 전환 ──────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -3833,8 +3895,19 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     const accBtn = document.getElementById("sb-acc-profile");
     if (accBtn) accBtn.classList.toggle("active", btn.dataset.tab === "profile");
     if (btn.dataset.tab === "home") renderHome();
-    if (btn.dataset.tab === "browse" && !browseCache.length) loadBrowseAnnouncements();
-    if (btn.dataset.tab === "match" && !announcementsCache.length) loadAnnouncements();
+    if (btn.dataset.tab === "browse") {
+      // Phase 2: 둘러보기 안에 2개 모드 (all / match) — 현재 모드에 맞춰 로드
+      const mode = (window._browseMode || "all");
+      if (mode === "all" && !browseCache.length) loadBrowseAnnouncements();
+      if (mode === "match" && !announcementsCache.length) loadAnnouncements();
+    }
+    // (Phase 2) match 탭 진입 = 둘러보기의 match 모드로 라우팅
+    if (btn.dataset.tab === "match") {
+      const browseBtn = document.querySelector('.tab-btn[data-tab="browse"]');
+      if (browseBtn) browseBtn.click();
+      setBrowseMode("match");
+      return;
+    }
     if (btn.dataset.tab === "plan" && !window._planLoaded) loadPlan();
     if (btn.dataset.tab === "my-docs") renderMyDocs();
     if (btn.dataset.tab === "analyze") {
@@ -3911,8 +3984,8 @@ function setMyDocs(arr) {
     }).catch(e => console.warn("[my-docs] save failed:", e));
   }
   renderMyDocs();
-  // 매칭 탭이 열려 있으면 즉시 다시 매칭
-  if (document.getElementById("pane-match").classList.contains("active")) loadAnnouncements();
+  // 매칭 화면(둘러보기의 '자격 맞춤' 모드)이 활성이면 즉시 다시 매칭
+  if (_isMatchViewActive()) loadAnnouncements();
 }
 
 async function migrateLocalDocsIfNeeded() {
@@ -4249,7 +4322,7 @@ async function renderMyDocs() {
 document.querySelectorAll("#business-type-seg button").forEach(b => {
   b.addEventListener("click", () => {
     setBusinessType(b.dataset.value);
-    if (document.getElementById("pane-match").classList.contains("active")) loadAnnouncements();
+    if (_isMatchViewActive()) loadAnnouncements();
   });
 });
 
@@ -5668,9 +5741,16 @@ function updateCompareBar() {
   const bar = document.getElementById("cmp-bar");
   const count = document.getElementById("cmp-bar-count");
   count.textContent = compareSelection.size;
-  // 매칭 탭이 활성일 때만, 그리고 2개 이상 선택됐을 때만 노출
-  const matchActive = document.getElementById("pane-match")?.classList.contains("active");
-  bar.classList.toggle("show", matchActive && compareSelection.size >= 2);
+  // 매칭 화면(둘러보기의 '자격 맞춤' 모드)이 활성일 때만, 그리고 2개 이상 선택됐을 때만 노출
+  bar.classList.toggle("show", _isMatchViewActive() && compareSelection.size >= 2);
+}
+
+// Phase 2: 매칭 카드 화면이 보이는지 = 둘러보기 탭 활성 AND 자격 맞춤 모드 (또는 legacy pane-match.active)
+function _isMatchViewActive() {
+  const browseActive = document.getElementById("pane-browse")?.classList.contains("active");
+  if (browseActive && window._browseMode === "match") return true;
+  // legacy fallback (Phase 2 이전 코드가 pane-match 를 직접 활성화하는 케이스)
+  return document.getElementById("pane-match")?.classList.contains("active") || false;
 }
 
 function _parseFitDetail(detail) {
