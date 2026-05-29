@@ -28,7 +28,7 @@ from .prompts import (
     QA_SYSTEM_PROMPT,
     QA_USER_TEMPLATE,
 )
-from .storage import load_analysis, save_analysis, save_extract, save_pdf
+from .storage import load_analysis, save_analysis, save_extract, save_image, save_pdf
 
 
 # .env 는 모듈 로드 시 1회 적용
@@ -190,6 +190,152 @@ def analyze_pdf(
 
     save_analysis(file_hash, analysis)
     return analysis
+
+
+# ─── 이미지 분석 ─────────────────────────────────────────────────────
+# Gemini Vision (multimodal) 으로 JPG/PNG 공고 캡처 1장을 직접 분석한다.
+# PDF 와 동일한 7카테고리 스키마로 결과를 돌려주므로, 하류 코드 (format_analysis_summary,
+# 비교 매트릭스, 맞춤 플랜 가이드) 는 별도 분기 없이 그대로 사용 가능.
+
+_EXTRACTION_USER_TEMPLATE_IMAGE = """이 이미지는 한국 정부지원사업 공고문 페이지(또는 캡처)입니다.
+이미지에 보이는 텍스트와 표를 읽어 7개 카테고리 정보를 추출해주세요.
+
+이미지는 단일 페이지로 취급합니다. 모든 항목의 `page` 필드는 1 로 설정하세요."""
+
+
+_IMAGE_MIME_BY_EXT = {
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png":  "image/png",
+    ".webp": "image/webp",
+}
+
+
+def analyze_image(
+    image_source: Union[Path, bytes],
+    original_filename: Optional[str] = None,
+    mime_type: Optional[str] = None,
+    *,
+    provider: Optional[LLMProvider] = None,
+    use_cache: bool = True,
+) -> dict:
+    """이미지 1장을 분석. PDF 와 동일한 7카테고리 스키마로 반환.
+
+    - mime_type 이 None 이면 파일명 확장자로 추정 (jpg/png/webp)
+    - 같은 hash 의 분석 결과가 캐시에 있으면 LLM 호출 없이 즉시 반환
+    - Gemini Vision 만 지원 (provider 미지원 시 LLMError)
+    """
+    started = time.time()
+
+    if isinstance(image_source, (bytes, bytearray)):
+        image_bytes = bytes(image_source)
+    else:
+        image_bytes = Path(image_source).read_bytes()
+
+    file_hash = compute_file_hash(image_bytes)
+
+    # MIME 추정 (인자 → 확장자 → 기본 jpeg)
+    if not mime_type:
+        ext = (Path(original_filename or "").suffix or "").lower()
+        mime_type = _IMAGE_MIME_BY_EXT.get(ext, "image/jpeg")
+
+    if use_cache:
+        cached = load_analysis(file_hash)
+        if cached is not None and cached.get("schema_version") == SCHEMA_VERSION:
+            cached["cache_hit"] = True
+            return cached
+
+    save_image(image_bytes, mime_type)
+
+    if provider is None:
+        provider = get_llm_provider()
+
+    try:
+        llm_result = provider.complete_vision(
+            system=EXTRACTION_SYSTEM_PROMPT,
+            user=_EXTRACTION_USER_TEMPLATE_IMAGE,
+            image_bytes=image_bytes,
+            mime_type=mime_type,
+            response_schema=EXTRACTION_SCHEMA,
+            max_tokens=5000,
+        )
+    except LLMError:
+        raise
+
+    if not isinstance(llm_result, dict):
+        raise LLMError(f"Expected dict from LLM (schema was set), got {type(llm_result).__name__}")
+
+    # 이미지는 단일 페이지로 취급 (page_count=1)
+    issues = _validate_analysis(llm_result, page_count=1)
+
+    empty_section = {"items": [], "extraction_note": ""}
+    analysis = {
+        "source_file":   original_filename or f"{file_hash}{Path(original_filename or '.jpg').suffix or '.jpg'}",
+        "source_type":   "image",
+        "source_mime":   mime_type,
+        "file_hash":     file_hash,
+        "page_count":    1,
+        "schema_version": SCHEMA_VERSION,
+        "eligibility":    llm_result.get("eligibility",    dict(empty_section)),
+        "warnings":       llm_result.get("warnings",       dict(empty_section)),
+        "schedule":       llm_result.get("schedule",       dict(empty_section)),
+        "support_amount": llm_result.get("support_amount", dict(empty_section)),
+        "required_docs":  llm_result.get("required_docs",  dict(empty_section)),
+        "evaluation":     llm_result.get("evaluation",     dict(empty_section)),
+        "obligations":    llm_result.get("obligations",    dict(empty_section)),
+        "missing_sections":  llm_result.get("missing_sections", []),
+        "validation_issues": issues,
+        "section_extraction": {"used_sections": False, "categories": [], "coverage": 0.0},
+        "elapsed_seconds":    round(time.time() - started, 2),
+        "cache_hit":          False,
+    }
+
+    save_analysis(file_hash, analysis)
+    return analysis
+
+
+def analyze_attachment(
+    file_bytes: bytes,
+    original_filename: str,
+    mime_type: Optional[str] = None,
+    *,
+    provider: Optional[LLMProvider] = None,
+    use_cache: bool = True,
+) -> dict:
+    """파일 형식 자동 dispatch — PDF → analyze_pdf, 이미지 → analyze_image.
+
+    분기 우선순위:
+      1. mime_type 인자
+      2. 파일명 확장자 (.pdf / .jpg .jpeg .png .webp)
+
+    지원하지 않는 형식은 LLMError.
+    """
+    name = (original_filename or "").lower()
+    mt = (mime_type or "").lower()
+
+    is_pdf = (mt == "application/pdf") or name.endswith(".pdf")
+    is_image = mt.startswith("image/") or any(name.endswith(e) for e in (".jpg", ".jpeg", ".png", ".webp"))
+
+    if is_pdf:
+        return analyze_pdf(
+            file_bytes,
+            original_filename=original_filename,
+            provider=provider,
+            use_cache=use_cache,
+        )
+    if is_image:
+        if not mt:
+            ext = Path(name).suffix
+            mt = _IMAGE_MIME_BY_EXT.get(ext, "image/jpeg")
+        return analyze_image(
+            file_bytes,
+            original_filename=original_filename,
+            mime_type=mt,
+            provider=provider,
+            use_cache=use_cache,
+        )
+
+    raise LLMError(f"지원하지 않는 파일 형식: {original_filename!r} (mime={mime_type!r})")
 
 
 def _normalize_title(title: str) -> str:

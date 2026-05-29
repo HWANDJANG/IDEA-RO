@@ -733,7 +733,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ─── 첨부파일 분석 라우트 ─────────────────────────────────────────────
     def _handle_upload(self) -> None:
-        from planner.analyzer.analyzer import analyze_pdf
+        from planner.analyzer.analyzer import analyze_attachment
         from planner.analyzer.llm.base import LLMError
 
         user_id = self._require_user_id()
@@ -763,9 +763,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "missing 'file' field"}, status=400)
             return
         filename = (file_field.filename or "uploaded.pdf").strip()
-        if not filename.lower().endswith(".pdf"):
-            self._send_json({"error": "only .pdf files are supported"}, status=415)
+        name_lower = filename.lower()
+        allowed_exts = (".pdf", ".jpg", ".jpeg", ".png", ".webp")
+        if not name_lower.endswith(allowed_exts):
+            self._send_json({
+                "error": "PDF / JPG / PNG / WEBP 파일만 지원합니다",
+            }, status=415)
             return
+        # 클라이언트가 보내준 MIME (multipart 의 Content-Type) — 없으면 None 으로 dispatcher 에 위임
+        file_mime = getattr(file_field, "content_type", None)
 
         announcement_id = (fields.get("announcement_id").data.decode("utf-8")
                            if "announcement_id" in fields else None) or None
@@ -792,9 +798,13 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
-        # 분석 실행 (캐시 히트 시 즉시 반환됨)
+        # 분석 실행 (캐시 히트 시 즉시 반환됨). 확장자/MIME 에 따라 PDF/이미지로 자동 dispatch.
         try:
-            analysis = analyze_pdf(file_field.data, original_filename=filename)
+            analysis = analyze_attachment(
+                file_field.data,
+                original_filename=filename,
+                mime_type=file_mime,
+            )
         except LLMError as e:
             self._send_json({"error": f"LLM 호출 실패: {e}"}, status=502)
             return

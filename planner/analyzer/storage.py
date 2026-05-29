@@ -3,11 +3,12 @@
 레이아웃:
     planner/storage/
       ├── pdfs/{hash}.pdf
+      ├── images/{hash}.{jpg|png|webp}
       ├── extracts/{hash}.txt
       └── analyses/{hash}.json
 
-`{hash}` 는 PyMuPDF 추출 전에 계산되는 SHA256 의 앞 16자.
-같은 PDF 재업로드 시 `load_analysis(hash)` 가 캐시 히트되어 LLM 재호출이 없다.
+`{hash}` 는 입력 파일 바이트의 SHA256 앞 16자 (포맷 무관).
+같은 파일 재업로드 시 `load_analysis(hash)` 가 캐시 히트되어 LLM 재호출이 없다.
 """
 
 from __future__ import annotations
@@ -41,6 +42,12 @@ def _analyses_dir() -> Path:
     return p
 
 
+def _images_dir() -> Path:
+    p = _STORAGE_ROOT / "images"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def save_pdf(pdf_bytes: bytes, original_filename: str) -> str:
     """PDF 바이트를 받아 hash 파일명으로 저장. (file_hash, 저장 경로) 중 hash 만 반환."""
     file_hash = compute_file_hash(pdf_bytes)
@@ -52,6 +59,31 @@ def save_pdf(pdf_bytes: bytes, original_filename: str) -> str:
 
 def get_pdf_path(file_hash: str) -> Path:
     return _pdfs_dir() / f"{file_hash}.pdf"
+
+
+_MIME_TO_EXT = {
+    "image/jpeg": ".jpg",
+    "image/jpg":  ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/png":  ".png",
+    "image/webp": ".webp",
+}
+
+
+def save_image(image_bytes: bytes, mime_type: str) -> str:
+    """이미지 바이트를 hash 파일명 + MIME 추정 확장자로 저장. file_hash 반환."""
+    file_hash = compute_file_hash(image_bytes)
+    ext = _MIME_TO_EXT.get((mime_type or "").lower(), ".bin")
+    path = _images_dir() / f"{file_hash}{ext}"
+    if not path.exists():
+        path.write_bytes(image_bytes)
+    return file_hash
+
+
+def get_image_path(file_hash: str) -> Optional[Path]:
+    for p in _images_dir().glob(f"{file_hash}.*"):
+        return p
+    return None
 
 
 def save_extract(file_hash: str, doc: ExtractedDocument) -> None:
@@ -84,8 +116,8 @@ def load_analysis(file_hash: str) -> Optional[dict]:
 
 
 def delete_attachment(file_hash: str) -> None:
-    for d in (_pdfs_dir(), _extracts_dir(), _analyses_dir()):
-        # 확장자가 셋 다 다르니 일괄 처리하지 말고 glob
+    for d in (_pdfs_dir(), _images_dir(), _extracts_dir(), _analyses_dir()):
+        # 확장자가 디렉터리마다 다르니 일괄 처리하지 말고 glob
         for p in d.glob(f"{file_hash}.*"):
             try:
                 p.unlink()
