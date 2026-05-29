@@ -2516,6 +2516,8 @@
   }
   .plan-tl-kind.issue { background: var(--bg-accent); color: var(--muted); }
   .plan-tl-kind.apply { background: var(--primary-soft, #DCE3F4); color: var(--primary, #4A6BC9); }
+  /* Step 6: PDF 분석에서 추출한 공고 자체의 일정 (모집/발표/평가/사업기간/계약) */
+  .plan-tl-kind.extracted { background: #FFF4E6; color: #C2410C; border: 1px dashed #F59E0B; }
 
   /* 빈 상태 */
   .plan-empty-state {
@@ -4566,6 +4568,63 @@ function _buildPlanTimeline(plan) {
     });
   }
 
+  // 2.5) Step 6: PDF 분석에서 추출된 공고 자체의 일정 (모집기간/발표/평가/사업기간/계약 등)
+  const TYPE_ICON = {
+    recruitment_period: "📥",
+    announcement_date:  "📢",
+    evaluation_date:    "⚖️",
+    business_period:    "🏗️",
+    contract_date:      "📝",
+    other:              "📌",
+  };
+  const TYPE_LABEL = {
+    recruitment_period: "모집기간",
+    announcement_date:  "발표일",
+    evaluation_date:    "평가",
+    business_period:    "사업기간",
+    contract_date:      "계약",
+    other:              "일정",
+  };
+  // 동일 (공고, type, date) 중복 제거 — 공고끼리는 다른 일정으로 봄
+  const extractedSeen = new Set();
+  for (const r of picked) {
+    for (const ev of (r.extracted_events || [])) {
+      const ds = (ev.date_start || "").slice(0, 10);
+      if (!ds) continue;
+      const de = ev.date_end ? ev.date_end.slice(0, 10) : "";
+      const dedupKey = `${r.announcement_id}|${ev.type}|${ds}|${de}`;
+      if (extractedSeen.has(dedupKey)) continue;
+      extractedSeen.add(dedupKey);
+      // 이미 마감 이벤트로 들어간 날짜라면 skip (apply 와 의미 중복 방지)
+      if (ev.type === "recruitment_period" && de && de === (r.end_date || "").slice(0,10)) {
+        // 모집기간 종료 = 신청 마감이면 apply 와 중복 → skip 안하고 그대로 두기 (사용자가 둘 다 볼 수 있게)
+      }
+      const icon = TYPE_ICON[ev.type] || "📌";
+      const label = TYPE_LABEL[ev.type] || "일정";
+      const titleText = ev.title || label;
+      const isRange = de && de !== ds;
+      const timeStr = ev.time ? ` ${ev.time}` : "";
+      const dateLabelExtra = isRange ? ` ~ ${de}` : "";
+      items.push({
+        kind: "extracted",
+        type: ev.type,
+        date: ds,           // 시작 일자로 정렬·표시
+        date_end: de || ds,
+        time: ev.time || "",
+        name: `${titleText}${dateLabelExtra ? ` (${dateLabelExtra.trim()})` : ''}${timeStr}`,
+        announcement_titles: [r.title],
+        detail_url: r.detail_url,
+        summary: `${icon} [${label}] ${titleText} (${r.title})`,
+        description:
+          `공고: ${r.title}\n` +
+          `일정: ${ds}${isRange ? ` ~ ${de}` : ''}${timeStr}\n` +
+          ((ev.source_files && ev.source_files.length)
+            ? `출처: ${ev.source_files.join(', ')}\n` : '') +
+          (r.detail_url ? `원문: ${r.detail_url}` : ''),
+      });
+    }
+  }
+
   // 3) 시간순 정렬 (오늘 ≤ 미래)
   items.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -4604,6 +4663,15 @@ function _renderPlanTimeline(plan) {
   }
 
   if (!items.length) return "";
+  const EXTRACTED_ICON = {
+    recruitment_period: "📥", announcement_date: "📢", evaluation_date: "⚖️",
+    business_period: "🏗️", contract_date: "📝", other: "📌",
+  };
+  const EXTRACTED_LABEL = {
+    recruitment_period: "모집기간", announcement_date: "발표일",
+    evaluation_date: "평가", business_period: "사업기간",
+    contract_date: "계약", other: "PDF 일정",
+  };
   const itemsHtml = items.map((it, i) => {
     const isMulti = (it.announcement_titles || []).length > 1;
     const relText = isMulti
@@ -4611,8 +4679,16 @@ function _renderPlanTimeline(plan) {
       : escapeHtml((it.announcement_titles || [])[0] || "");
     const ddText = it.days_left === 0 ? "오늘" :
       it.days_left < 0 ? `D+${-it.days_left}` : `D-${it.days_left}`;
-    const icon = it.kind === "apply" ? "📅" : (it.priority === "urgent" ? "🔥" : "📋");
-    const kindLabel = it.kind === "apply" ? "신청 마감" : (it.priority === "urgent" ? "긴급 발급" : "서류 발급");
+    let icon, kindLabel;
+    if (it.kind === "apply") {
+      icon = "📅"; kindLabel = "신청 마감";
+    } else if (it.kind === "extracted") {
+      icon = EXTRACTED_ICON[it.type] || "📌";
+      kindLabel = EXTRACTED_LABEL[it.type] || "PDF 일정";
+    } else {  // issue
+      icon = it.priority === "urgent" ? "🔥" : "📋";
+      kindLabel = it.priority === "urgent" ? "긴급 발급" : "서류 발급";
+    }
     return `
       <label class="plan-tl-item ${it.urgency}">
         <input type="checkbox" data-tl-idx="${i}" checked onchange="_updatePlanSelCount()">
@@ -4640,6 +4716,7 @@ function _renderPlanTimeline(plan) {
         <button class="plan-tl-btn" onclick="_planTlSelectAll(false)">전체 해제</button>
         <button class="plan-tl-btn" onclick="_planTlSelectKind('issue')">발급만</button>
         <button class="plan-tl-btn" onclick="_planTlSelectKind('apply')">마감만</button>
+        <button class="plan-tl-btn" onclick="_planTlSelectKind('extracted')">PDF 일정만</button>
         <button class="plan-tl-btn primary" onclick="_planTlPush('google')">🗓️ Google 캘린더에 등록</button>
         <button class="plan-tl-btn naver"   onclick="_planTlPush('naver')">N 네이버 캘린더에 등록</button>
       </div>
@@ -4682,7 +4759,10 @@ async function _planTlPush(provider) {
     summary: it.summary,
     description: it.description,
     date_start: it.date,
-    date_end: it.date,
+    // extracted 일정은 range 가능 (모집기간 등) → date_end 보존
+    date_end:   it.date_end || it.date,
+    // 시간이 있으면 (예: "18:00") 캘린더 push 헬퍼가 활용
+    time:       it.time || null,
   }));
   // 기존 헬퍼 재사용
   await _pushEventsToProvider(events, provider);

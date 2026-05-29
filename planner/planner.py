@@ -432,6 +432,52 @@ def _load_analyses_for_announcement(
     return out
 
 
+# ─── Step 6: 분석된 PDF 의 일정 후보 추출 + 캘린더 통합용 ──────────────
+def _load_extracted_events_for_announcement(
+    conn: sqlite3.Connection,
+    ann_id: int,
+    user_id: int,
+) -> list[dict]:
+    """공고의 모든 분석(사용자 첨부 + 자동 fetch) 에서 일정 항목을 모아 dedup.
+
+    Returns: [{title, type, date_start, date_end, time, source_files}]
+    """
+    analyses = _load_analyses_for_announcement(conn, ann_id, user_id)
+    if not analyses:
+        return []
+    from .analyzer.analyzer import merge_schedule_items
+    per_file = [
+        (fname, (a.get("schedule") or {}).get("items") or [])
+        for _h, fname, a in analyses
+    ]
+    merged = merge_schedule_items(per_file)
+    import re as _re
+    _ISO = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    out: list[dict] = []
+    for ev in merged.get("items") or []:
+        # 날짜가 ISO 형식이 아니면 캘린더에 등록할 수 없으므로 제외
+        # (LLM 이 "2026-MM-DD" 같은 placeholder 반환하는 케이스 차단)
+        ds = (ev.get("date_start") or "")[:10]
+        if not _ISO.match(ds):
+            continue
+        de_raw = ev.get("date_end")
+        de = (de_raw or "")[:10] if de_raw else None
+        if de and not _ISO.match(de):
+            de = None  # end 만 깨졌으면 단일 시점으로
+        # 프론트 키만 노출 (page 등 디버그 필드 제거)
+        out.append({
+            "title":        ev.get("title") or "",
+            "type":         ev.get("type") or "other",
+            "date_start":   ds,
+            "date_end":     de,
+            "time":         ev.get("time"),
+            "source_files": ev.get("source_files") or [],
+        })
+    # 날짜순 정렬 (이미 merge_schedule_items 가 정렬하지만 방어적으로)
+    out.sort(key=lambda x: (x.get("date_start") or "", x.get("type") or ""))
+    return out
+
+
 def _summarize_analyses(analyses: list[tuple[str, str, dict]]) -> str:
     """공고의 모든 PDF 분석 결과를 합쳐 LLM 컨텍스트용 짧은 요약.
     가이드 생성에 핵심인 것만: 평가 기준, 의무, 지원금 상세, 유의사항.
@@ -857,6 +903,19 @@ def compose_action_plan(
             "expired_docs": expired_docs,
             "issue_tasks": issue_tasks,
         })
+
+    # Step 6: 분석된 PDF 의 일정 항목을 각 recommendation 에 첨부.
+    # 이미 분석 완료된 공고만 채워지고, 미완료/없음은 빈 배열.
+    # 프론트가 _buildPlanTimeline 에 이 데이터를 흘려 캘린더 후보로 활용.
+    conn2 = sqlite3.connect(DB_PATH)
+    conn2.row_factory = sqlite3.Row
+    try:
+        for r in recommendations:
+            r["extracted_events"] = _load_extracted_events_for_announcement(
+                conn2, int(r["announcement_id"]), user_id,
+            )
+    finally:
+        conn2.close()
 
     # Step 5: Top N 공고에 대해 백그라운드 auto-fetch 시작 (이미 시도된 공고는 skip).
     # 사용자가 "+ 담기" 누를 즈음엔 분석 완료되어 가이드에 즉시 반영되도록.
