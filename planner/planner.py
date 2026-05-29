@@ -268,7 +268,7 @@ def generate_recommendation_narratives(
 # ─── Step 5: 담은 공고 기반 "이번 주 / 다음 주 할 일" 종합 가이드 ──────
 
 _GUIDE_SYSTEM = """당신은 한국 정부 창업지원사업 신청 컨설턴트입니다.
-사용자가 '내 플랜에 담은' 공고들의 마감일·필요 서류·발급 일정·보유 서류 상태를 보고,
+사용자가 '내 플랜에 담은' 공고들의 마감일·필요 서류·발급 일정·보유 서류 상태·자격 매칭·공고 특성을 보고,
 시간 구간별로 "지금 무엇을 해야 하는지" 액션 가이드를 만듭니다.
 
 엄격히 지켜야 할 규칙:
@@ -282,16 +282,34 @@ _GUIDE_SYSTEM = """당신은 한국 정부 창업지원사업 신청 컨설턴�
    - '만료' 목록은 반드시 "재발급" 으로 표현 (신규 X).
    - '임박' 목록은 "갱신" 으로 표현하되 마감 전 충분한 여유 두기.
    - '미보유' 목록은 "신규 발급" 으로 표현.
+
 6. ★ 가능한 구체적인 발급처를 1개 인용:
    - 주민등록표등본/초본: 정부24
    - 사업자등록증명·납세증명서: 홈택스
    - 지방세납세증명: 위택스
    - 4대보험 가입증명: 4대사회보험정보연계센터
    - 잘 모르면 "정부24" 로 기본 안내.
-7. 사용자가 캘린더에 일정을 등록하는 단계는 이미 별도 버튼이 있으니 가이드에서 다시 언급하지 마세요.
-8. 추상 표현 ("지원서류 준비") 대신 구체적 단계 ("X·Y·Z 발급 + 사업계획서 초안 작성") 로.
-9. 항목당 한 줄, 한국어 40~100자.
-10. 응답은 반드시 지정된 JSON 스키마에 맞아야 합니다."""
+
+7. ★ 자격 매칭 결과(reasons)와 공고 특성을 적극 활용:
+   - reasons 에 매칭 결과(업력/지역/신청대상)가 있으면 그 detail 을 인용하세요.
+     예: "0.2년 예비창업자 트랙 매칭, 자격 100점"
+   - 자격 점수가 낮은 항목은 "지원서에 매칭 포인트 강조" 같은 액션으로 연결.
+
+8. ★ 공고 유형별 준비 강도를 다르게 안내:
+   - 💰 자금 지원·🔬 R&D: 사업계획서/IR 자료/사업비 산출 비중 큼 → 다음 주 작업 시간 확보 권장.
+   - 🏢 입주·공간: 입주신청서/시설 사용 계획서 + 면접 가능성.
+   - 🎓 교육·멘토링: 자기소개·동기·학습 목표 1페이지 ~ 3페이지 수준.
+   - 🌏 판로·글로벌: 영문 IR 또는 수출 실적 확인.
+   - 🎯 행사·네트워크: 1페이지 기업 소개·참가 신청서로 가벼움.
+
+9. ★ 지원금 규모와 노력 등급을 작업 우선순위에 반영:
+   - 지원금 ≥1억원 + 노력 '높음' → 사업계획서 작성에 가장 큰 시간 배정 권장.
+   - 지원금 작거나 노력 '낮음' → 발급 + 신청서로 충분.
+
+10. 사용자가 캘린더에 일정을 등록하는 단계는 이미 별도 버튼이 있으니 가이드에서 다시 언급하지 마세요.
+11. 추상 표현 ("지원서류 준비") 대신 구체적 단계 ("사업자등록증명 발급 + 사업계획서 초안 작성") 로.
+12. 항목당 한 줄, 한국어 40~120자.
+13. 응답은 반드시 지정된 JSON 스키마에 맞아야 합니다."""
 
 _GUIDE_USER_TMPL = """## 오늘 날짜
 {today}
@@ -299,16 +317,23 @@ _GUIDE_USER_TMPL = """## 오늘 날짜
 ## 사용자 프로필
 {profile_json}
 
-## 담은 공고 ({n}건) — 각 공고별 보유/미보유/만료/임박 서류
+## 담은 공고 ({n}건)
 {picked_cards}
 
 ## 통합 발급 태스크 (담은 공고들 합쳐 서류명으로 dedup, 가장 빠른 due 우선)
 {task_lines}
 
 위 정보로 이번 주 / 다음 주 / 그 이후 무엇을 해야 하는지 시간 구간별 액션 가이드를 만들어 주세요.
+
+가이드 작성 시 반드시 반영할 점:
 - "이미 보유" 서류는 다시 발급하지 말 것.
 - "만료" 서류는 "재발급", "미보유" 는 "신규 발급" 으로 표현 구분.
-- 가능한 발급처(정부24 / 홈택스 / 위택스 등) 1개 인용.
+- 발급처(정부24 / 홈택스 / 위택스 등) 1개 인용.
+- 자격 매칭 결과(업력/지역/신청대상)의 detail 을 그대로 인용.
+- 공고 유형(자금/입주/교육/R&D/판로/행사)에 맞춘 준비 강도 안내.
+- 지원금 규모가 큰 사업(≥1억원) 또는 노력 '높음' 사업은 사업계획서·IR 자료 작업 시간을 다음 주 가이드에 명시.
+- 노력 '낮음' 사업은 발급 + 신청서로 충분함을 명시.
+
 가장 중요한 한 가지 주의사항이 있으면 key_warning 에 한 줄로 적어 주세요."""
 
 _GUIDE_SCHEMA: dict = {
@@ -335,7 +360,9 @@ _GUIDE_SCHEMA: dict = {
 
 
 def _guide_cache_key(user_id: int, picked_ids: list[int], today: date) -> str:
-    parts = [str(user_id), today.isoformat(), ",".join(str(x) for x in sorted(picked_ids))]
+    # 시스템 프롬프트 해시를 포함 → 프롬프트 바뀌면 자동 invalidate
+    sys_hash = hashlib.sha256(_GUIDE_SYSTEM.encode("utf-8")).hexdigest()[:6]
+    parts = [sys_hash, str(user_id), today.isoformat(), ",".join(str(x) for x in sorted(picked_ids))]
     h = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
     return f"plan_guide_{user_id}_{h}"
 
@@ -408,15 +435,35 @@ def generate_action_guide(
     def _docs_line(label: str, docs: list) -> str:
         return f"    {label}: {', '.join(docs) if docs else '(없음)'}"
 
-    picked_cards = "\n\n".join(
-        f"- [{r['announcement_id']}] {r.get('title', '')[:90]}\n"
-        f"    마감: {(r.get('end_date') or '')[:10]} (D-{r.get('days_left')})\n"
-        + _docs_line("✅ 보유 (재발급 불필요)", r.get("fulfilled_docs") or []) + "\n"
-        + _docs_line("⚠️ 만료 (재발급 필요)",   r.get("expired_docs")   or []) + "\n"
-        + _docs_line("⏰ 임박 (갱신 권장)",      r.get("expiring_docs")  or []) + "\n"
-        + _docs_line("❌ 미보유 (신규 발급)",    r.get("missing_docs")   or [])
-        for r in picked
-    )
+    def _picked_card_block(r: dict) -> str:
+        # 자격 매칭 reasons → "업력 ✓ (예비~3년 / 내: 0.2년)" 형태
+        reasons = (r.get("profile_fit") or {}).get("reasons") or []
+        fit_lines = [
+            f"      · {fr.get('label', '')} {'✓' if fr.get('ok') else '✗'} ({fr.get('detail', '')})"
+            for fr in reasons
+        ]
+        fit_block = "\n".join(fit_lines) if fit_lines else "      · (정형 자격 메타 없음)"
+
+        # 유형/지원금/노력
+        type_info = r.get("type") or {}
+        type_label = f"{type_info.get('emoji', '')} {type_info.get('label', '기타')}"
+        sig = r.get("signals") or {}
+        amount = sig.get("amount_display") or "지원금 모름"
+        effort = sig.get("effort_label") or "?"
+        req_n = sig.get("req_doc_count") or 0
+
+        return (
+            f"- [{r['announcement_id']}] {r.get('title', '')[:90]}\n"
+            f"    마감: {(r.get('end_date') or '')[:10]} (D-{r.get('days_left')})\n"
+            f"    유형: {type_label}  |  지원금: {amount}  |  노력 등급: {effort} (필요 서류 {req_n}건)\n"
+            f"    자격 매칭 (점수 {(r.get('profile_fit') or {}).get('score', 0)}):\n{fit_block}\n"
+            + _docs_line("✅ 보유 (재발급 불필요)", r.get("fulfilled_docs") or []) + "\n"
+            + _docs_line("⚠️ 만료 (재발급 필요)",   r.get("expired_docs")   or []) + "\n"
+            + _docs_line("⏰ 임박 (갱신 권장)",      r.get("expiring_docs")  or []) + "\n"
+            + _docs_line("❌ 미보유 (신규 발급)",    r.get("missing_docs")   or [])
+        )
+
+    picked_cards = "\n\n".join(_picked_card_block(r) for r in picked)
     task_lines = "\n".join(
         f"- '{t['task']}' (~{t['due']}, {t['priority']}, {len(t['related_titles'])}개 공고 공통)"
         for t in dedup_tasks
