@@ -1352,8 +1352,11 @@
     background: linear-gradient(180deg, #fff7eb 0%, #fffaf3 100%);
   }
   .aa-block.aa-loading {
-    color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px;
+    color: var(--muted); font-size: 12px; display: flex; align-items: flex-start; gap: 10px;
     background: var(--bg-subtle);
+  }
+  .aa-loading-sub {
+    font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5;
   }
   .aa-block.aa-error {
     color: #B91C1C; background: #FEF2F2; font-size: 12px;
@@ -5561,6 +5564,7 @@ function toggleMatchDetail(idx) {
 
 // ─── Phase 3: 매칭 카드 펼침 시 자동 분석 결과 인라인 표시 ────────────────
 // 캐시 정책: mount DOM 의 내용이 비어있을 때만 fetch (re-render 후 자동 재요청).
+// 옵션 A: GET 결과가 비어있고 로그인 상태면 자동으로 POST 트리거 (펼침 = 관심 신호).
 async function loadAutoAnalysisForCard(idx) {
   const mount = document.getElementById(`auto-analysis-${idx}`);
   const card  = document.getElementById(`ann-${idx}`);
@@ -5575,14 +5579,57 @@ async function loadAutoAnalysisForCard(idx) {
     </div>`;
 
   try {
+    // 1) GET — 이미 분석된 결과 있나 확인
     const res = await fetch(`/api/announcements/${annId}/auto-attachments`, { credentials: "include" });
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+
+    // 2) 자료 있으면 즉시 렌더
+    if (data.attachments && data.attachments.length > 0) {
+      mount.innerHTML = renderAutoAnalysisBlock(data, annId);
+      return;
+    }
+
+    // 3) 자료 없음 — 로그인 사용자는 자동 트리거, 비로그인은 빈 상태 표시
+    if (CURRENT_USER) {
+      return _autoStartAnalysis(annId, mount, idx);
+    }
+    mount.innerHTML = renderAutoAnalysisBlock(data, annId);
+  } catch (e) {
+    mount.innerHTML = `
+      <div class="aa-block aa-error">
+        자동 분석 결과를 불러오지 못했어요. (${escapeHtml(String(e))})
+        <button class="aa-retry-btn" onclick="(function(){ const m=document.getElementById('auto-analysis-${idx}'); if(m) m.innerHTML=''; loadAutoAnalysisForCard(${idx}); })()">다시 시도</button>
+      </div>`;
+  }
+}
+
+// 카드 펼침 시 자동으로 공고 페이지 fetch + 분석 시작 (1~2분 소요).
+// POST 응답을 await — 완료 후 렌더. 사용자가 카드 접어도 mount 는 DOM 에
+// 남아있어 POST 가 끝나면 결과를 그려준다 (재펼침 시 캐시 hit).
+async function _autoStartAnalysis(annId, mount, idx) {
+  mount.innerHTML = `
+    <div class="aa-block aa-loading">
+      <span class="aa-spinner"></span>
+      <div>
+        <div>공고 페이지에서 첨부 자료를 가져와 분석 중이에요...</div>
+        <div class="aa-loading-sub">PDF 다운로드 + AI 분석으로 1~2분 정도 걸려요. 다른 카드를 보고 계셔도 백그라운드로 계속 진행돼요.</div>
+      </div>
+    </div>`;
+  try {
+    const res = await fetch(`/api/announcements/${annId}/auto-fetch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ max_files: 10 }),
+    });
     if (!res.ok) throw new Error(res.statusText);
     const data = await res.json();
     mount.innerHTML = renderAutoAnalysisBlock(data, annId);
   } catch (e) {
     mount.innerHTML = `
       <div class="aa-block aa-error">
-        자동 분석 결과를 불러오지 못했어요. (${escapeHtml(String(e))})
+        자동 분석 시작 실패: ${escapeHtml(String(e))}
         <button class="aa-retry-btn" onclick="(function(){ const m=document.getElementById('auto-analysis-${idx}'); if(m) m.innerHTML=''; loadAutoAnalysisForCard(${idx}); })()">다시 시도</button>
       </div>`;
   }
