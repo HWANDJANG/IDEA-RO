@@ -3324,9 +3324,13 @@
 
     <div class="sb-group-label">탐색</div>
     <button class="tab-btn" data-tab="browse"><span class="sb-ic">🔍</span>공고 둘러보기<span class="count" id="cnt-browse">·</span></button>
-    <button class="tab-btn" data-tab="match"><span class="sb-ic">🎯</span>공고 매칭<span class="count" id="cnt-match">·</span></button>
-    <button class="tab-btn" data-tab="analyze"><span class="sb-ic">📊</span>공고 분석<span class="count" id="cnt-attach">0</span></button>
-    <button class="tab-btn" data-tab="plan"><span class="sb-ic">🧭</span>맞춤 플랜<span class="count" id="cnt-plan">·</span></button>
+    <button class="tab-btn" data-tab="plan"><span class="sb-ic">🎯</span>내 액션 플랜<span class="count" id="cnt-plan">·</span></button>
+
+    <!-- (Phase 1 통합) 공고 매칭·공고 분석 은 사이드바에서 제외. pane-match / pane-analyze 는
+         JS 호환을 위해 DOM 에는 남겨두며, Phase 2~3 에서 '공고 둘러보기' 안으로 흡수 예정.
+         숨김 버튼은 기존 코드가 .click() 으로 호출하는 경우의 fallback 으로만 둔다. -->
+    <button class="tab-btn" data-tab="match"   style="display:none" aria-hidden="true"></button>
+    <button class="tab-btn" data-tab="analyze" style="display:none" aria-hidden="true"></button>
 
     <div class="sb-group-label">마이페이지</div>
     <button class="tab-btn" data-tab="my-docs"><span class="sb-ic">📁</span>내 서류<span class="count" id="cnt-my-docs">0</span></button>
@@ -3596,10 +3600,10 @@
   <!-- 탭: 맞춤 플랜 (Top N 추천 + 액션) -->
   <section class="pane" id="pane-plan">
     <div class="panel">
-      <h2 class="pane-title">🧭 맞춤 플랜</h2>
+      <h2 class="pane-title">🎯 내 액션 플랜</h2>
       <p style="margin-top:0; color:var(--muted); font-size:13px;">
-        기업 프로필 + 보유 서류 + 마감 임박도를 종합해 추천 Top N 공고를 정렬합니다.
-        각 카드에서 부족한 서류와 발급 우선순위를 한눈에 볼 수 있어요.
+        기업 프로필 + 보유 서류 + 마감 임박도를 종합해 <b>Top N 추천 공고</b> 와 <b>해야 할 일·일정</b> 을 한 화면에 모아드립니다.
+        담은 공고의 발급 태스크와 공고 자체 일정은 Google·Naver 캘린더로 한 번에 등록할 수 있어요.
       </p>
       <div class="plan-toolbar">
         <button class="plan-refresh" onclick="loadPlan()">🔄 다시 계산</button>
@@ -3670,7 +3674,7 @@
       <div id="cal-grid" class="cal-grid"></div>
 
       <div id="cal-empty" class="empty" style="margin-top:14px; display:none">
-        아직 추가된 일정이 없습니다. <b>공고 분석</b> 탭에서 PDF 를 업로드하고 일정을 추가하면 여기에 표시됩니다.
+        아직 추가된 일정이 없습니다. <b>공고 둘러보기</b> 에서 공고 페이지를 열거나 PDF 를 업로드하면 일정이 자동 추출됩니다.
       </div>
     </div>
 
@@ -4867,7 +4871,7 @@ function _renderPlanCard(r, rank) {
       <div class="plan-cta-row">
         <button class="plan-pick-btn" id="plan-pick-${r.announcement_id}" onclick="togglePlanPick(${r.announcement_id})">${picked ? '✓ 담음' : '+ 내 플랜에 담기'}</button>
         ${r.detail_url ? `<a class="plan-cta" href="${escapeHtml(r.detail_url)}" target="_blank" rel="noopener">원문 공고 →</a>` : ""}
-        <button class="plan-cta" onclick="(function(){ const m=document.querySelector('.tab-btn[data-tab=\\'match\\']'); if(m) m.click(); })()">매칭 탭에서 보기</button>
+        <button class="plan-cta" onclick="(function(){ const m=document.querySelector('.tab-btn[data-tab=\\'browse\\']'); if(m) m.click(); })()">둘러보기에서 보기</button>
       </div>
     </div>
   `;
