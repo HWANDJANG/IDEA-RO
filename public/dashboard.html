@@ -2195,16 +2195,18 @@
   .plan-card-head {
     display: flex; align-items: flex-start; gap: 14px;
   }
+  /* 순위 뱃지 — 정의된 변수만 사용 (var(--dark) 미정의 이슈 회피) */
   .plan-rank {
     flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
-    background: var(--accent); color: #fff;
+    background: #EFE9DD; color: #6B6358;
     display: flex; align-items: center; justify-content: center;
     font-family: var(--serif-en); font-size: 18px; font-weight: 600;
+    border: 1px solid #D9D0BD;
   }
-  .plan-rank.r2, .plan-rank.r3 { background: var(--dark); }
-  .plan-rank.r4, .plan-rank.r5, .plan-rank.r6, .plan-rank.r7, .plan-rank.r8, .plan-rank.r9, .plan-rank.r10 {
-    background: var(--bg-accent); color: var(--text);
-  }
+  .plan-rank.r1 { background: #D9521A; color: #fff; border-color: #D9521A; }
+  .plan-rank.r2 { background: #1A1714; color: #fff; border-color: #1A1714; }
+  .plan-rank.r3 { background: #4A6BC9; color: #fff; border-color: #4A6BC9; }
+  /* r4 이상은 디폴트 (베이지 배경 + 회색 글자) 그대로 */
   .plan-title-wrap { flex: 1; min-width: 0; }
   .plan-title {
     font-family: var(--serif-ko); font-weight: 600; font-size: 17px;
