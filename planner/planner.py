@@ -377,32 +377,58 @@ def _guide_cache_key(user_id: int, picked_ids: list[int], today: date, pdf_hashe
     return f"plan_guide_{user_id}_{h}"
 
 
-# ─── Step C: 담은 공고의 PDF 분석 결과 로드 + 압축 ──────────────────────
-def _load_analyses_for_announcement(conn: sqlite3.Connection, ann_id: int, user_id: int) -> list[tuple[str, str, dict]]:
-    """공고 id 에 연결된 PDF 분석 결과들 (해당 user 의 폴더만).
+# ─── Step C / Step 5: 담은 공고의 PDF 분석 결과 로드 + 압축 ──────────────
+# Step 5 부터 사용자 업로드 + 자동 fetch(announcement_auto_attachments) 모두 합쳐서 반환.
+# file_hash 로 dedup (사용자가 업로드한 PDF 가 자동 fetch 와 일치하면 한 번만).
+def _load_analyses_for_announcement(
+    conn: sqlite3.Connection,
+    ann_id: int,
+    user_id: int,
+) -> list[tuple[str, str, dict]]:
+    """공고 id 에 연결된 PDF 분석 결과들 (사용자 직접 첨부 + 자동 fetch 합본).
 
-    Returns: [(file_hash, original_filename, analysis_dict), ...]
+    Returns: [(file_hash, original_filename, analysis_dict), ...] — dedup by file_hash
     """
+    from .analyzer.storage import load_analysis
+
+    # source 별 (hash, filename) 수집 → 마지막에 hash 로 dedup
+    candidates: list[tuple[str, str, str]] = []  # (file_hash, filename, source: 'user'|'auto')
+
+    # 1) 사용자가 직접 첨부한 PDF (기존 동작 유지)
     folders = conn.execute(
         "SELECT id FROM attachment_folders WHERE announcement_id=? AND user_id=?",
         (ann_id, user_id),
     ).fetchall()
-    if not folders:
-        return []
-    folder_ids = tuple(f["id"] for f in folders)
-    placeholders = ",".join("?" * len(folder_ids))
-    rows = conn.execute(
-        f"SELECT file_hash, original_filename FROM uploaded_attachments "
-        f"WHERE folder_id IN ({placeholders}) AND user_id=?",
-        (*folder_ids, user_id),
-    ).fetchall()
+    if folders:
+        folder_ids = tuple(f["id"] for f in folders)
+        placeholders = ",".join("?" * len(folder_ids))
+        for r in conn.execute(
+            f"SELECT file_hash, original_filename FROM uploaded_attachments "
+            f"WHERE folder_id IN ({placeholders}) AND user_id=?",
+            (*folder_ids, user_id),
+        ).fetchall():
+            if r["file_hash"]:
+                candidates.append((r["file_hash"], r["original_filename"] or "", "user"))
 
-    from .analyzer.storage import load_analysis
+    # 2) 자동 fetch (Step 4) — done 상태만, 시스템 공유
+    for r in conn.execute(
+        "SELECT file_hash, original_filename FROM announcement_auto_attachments "
+        "WHERE announcement_id=? AND status='done' AND file_hash IS NOT NULL",
+        (ann_id,),
+    ).fetchall():
+        if r["file_hash"]:
+            candidates.append((r["file_hash"], r["original_filename"] or "", "auto"))
+
+    # 3) hash 로 dedup — 사용자 업로드 우선 (먼저 등록된 게 보존됨)
+    seen: set[str] = set()
     out: list[tuple[str, str, dict]] = []
-    for r in rows:
-        a = load_analysis(r["file_hash"])
+    for fh, fname, _src in candidates:
+        if fh in seen:
+            continue
+        seen.add(fh)
+        a = load_analysis(fh)
         if a:
-            out.append((r["file_hash"], r["original_filename"] or "", a))
+            out.append((fh, fname, a))
     return out
 
 
@@ -832,6 +858,10 @@ def compose_action_plan(
             "issue_tasks": issue_tasks,
         })
 
+    # Step 5: Top N 공고에 대해 백그라운드 auto-fetch 시작 (이미 시도된 공고는 skip).
+    # 사용자가 "+ 담기" 누를 즈음엔 분석 완료되어 가이드에 즉시 반영되도록.
+    _maybe_trigger_auto_fetch_async([int(r["announcement_id"]) for r in recommendations])
+
     return {
         "generated_at": datetime.now().isoformat(),
         "user_id": user_id,
@@ -844,3 +874,37 @@ def compose_action_plan(
         "weights": {"amount": w_amount, "effort": w_effort, "urgency": w_urgency},
         "recommendations": recommendations,
     }
+
+
+# ─── Step 5: Top N 자동 fetch 백그라운드 트리거 ──────────────────────────
+def _maybe_trigger_auto_fetch_async(ann_ids: list[int]) -> None:
+    """Top N 공고 각각에 대해 background thread 로 auto-fetch 시작.
+
+    - 이미 한 번이라도 fetch 시도(announcement_auto_attachments 에 row 존재) 되었으면 skip
+    - 모든 예외는 무시 (백그라운드)
+    - daemon=True 라 서버 종료 시 함께 종료
+    - sqlite 는 connection 분리 시 thread-safe 이므로 각 worker 마다 새 connection
+    """
+    import threading
+
+    def _worker(aid: int) -> None:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            try:
+                # 시도 이력 있으면 skip — 재시도는 사용자가 명시적으로 /auto-fetch POST 해야
+                row = conn.execute(
+                    "SELECT 1 FROM announcement_auto_attachments WHERE announcement_id=? LIMIT 1",
+                    (aid,),
+                ).fetchone()
+                if row:
+                    return
+                from .auto_fetcher import fetch_and_analyze_announcement
+                fetch_and_analyze_announcement(conn, aid, max_files=5)
+            finally:
+                conn.close()
+        except Exception:  # noqa: BLE001 — 백그라운드, 모든 에러 무시
+            pass
+
+    for aid in ann_ids:
+        threading.Thread(target=_worker, args=(aid,), daemon=True).start()

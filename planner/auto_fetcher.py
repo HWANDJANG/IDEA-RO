@@ -93,21 +93,23 @@ def _upsert_auto_attachment(
     source_url: str,
     filename: str,
 ) -> int:
-    """첨부 1건을 등록(또는 기존 row 의 id 조회). status=pending 으로 시작."""
+    """첨부 1건을 등록(또는 기존 row 의 id 조회). status=pending 으로 시작.
+
+    Race-safe: 두 스레드가 동시에 같은 (ann_id, source_url) 처리해도
+    INSERT OR IGNORE 가 충돌을 흡수하고 SELECT 로 동일 id 를 돌려준다.
+    """
+    conn.execute(
+        "INSERT OR IGNORE INTO announcement_auto_attachments "
+        "(announcement_id, source_url, original_filename, status) "
+        "VALUES (?, ?, ?, 'pending')",
+        (ann_id, source_url, filename),
+    )
     row = conn.execute(
         "SELECT id FROM announcement_auto_attachments "
         "WHERE announcement_id=? AND source_url=?",
         (ann_id, source_url),
     ).fetchone()
-    if row:
-        return int(row["id"])
-    cur = conn.execute(
-        "INSERT INTO announcement_auto_attachments "
-        "(announcement_id, source_url, original_filename, status) "
-        "VALUES (?, ?, ?, 'pending')",
-        (ann_id, source_url, filename),
-    )
-    return int(cur.lastrowid)
+    return int(row["id"])
 
 
 def _mark_done(
