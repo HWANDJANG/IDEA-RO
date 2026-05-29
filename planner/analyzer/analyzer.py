@@ -28,7 +28,7 @@ from .prompts import (
     QA_SYSTEM_PROMPT,
     QA_USER_TEMPLATE,
 )
-from .storage import load_analysis, save_analysis, save_extract, save_image, save_pdf
+from .storage import load_analysis, save_analysis, save_extract, save_image, save_pdf, save_source
 
 
 # .env 는 모듈 로드 시 1회 적용
@@ -203,12 +203,39 @@ _EXTRACTION_USER_TEMPLATE_IMAGE = """이 이미지는 한국 정부지원사업 
 이미지는 단일 페이지로 취급합니다. 모든 항목의 `page` 필드는 1 로 설정하세요."""
 
 
+_EXTRACTION_USER_TEMPLATE_TEXT = """아래는 한국 정부지원사업 공고문에서 추출한 평문 텍스트입니다 (HWPX 등 비-PDF 소스).
+[SECTION: xxx] 마커가 있으면 해당 섹션의 카테고리에 집중해서 7개 카테고리 정보를 추출해주세요.
+
+페이지 정보는 알 수 없으므로 모든 항목의 `page` 필드는 1 로 설정하세요.
+
+[공고문 시작]
+{full_text}
+[공고문 끝]"""
+
+
 _IMAGE_MIME_BY_EXT = {
     ".jpg":  "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png":  "image/png",
     ".webp": "image/webp",
 }
+
+
+_PAGED_SECTIONS = (
+    "eligibility", "warnings", "schedule",
+    "support_amount", "required_docs", "evaluation", "obligations",
+)
+
+
+def _force_single_page(llm_result: dict) -> None:
+    """단일 페이지 소스(이미지/HWPX)는 모든 items.page=1 로 정규화. in-place."""
+    for section in _PAGED_SECTIONS:
+        s = llm_result.get(section)
+        if not isinstance(s, dict):
+            continue
+        for item in s.get("items") or []:
+            if isinstance(item, dict):
+                item["page"] = 1
 
 
 def analyze_image(
@@ -265,7 +292,8 @@ def analyze_image(
     if not isinstance(llm_result, dict):
         raise LLMError(f"Expected dict from LLM (schema was set), got {type(llm_result).__name__}")
 
-    # 이미지는 단일 페이지로 취급 (page_count=1)
+    # 이미지는 단일 페이지로 취급 — LLM 이 절 번호를 page 로 잘못 잡는 경우 정규화
+    _force_single_page(llm_result)
     issues = _validate_analysis(llm_result, page_count=1)
 
     empty_section = {"items": [], "extraction_note": ""}
@@ -294,6 +322,98 @@ def analyze_image(
     return analysis
 
 
+# ─── 텍스트 분석 (HWPX, 일반 텍스트) ─────────────────────────────────
+# HWPX 처럼 원본은 바이너리 ZIP 이지만 본문 텍스트만 추출해 분석하는 경우.
+# - 캐시 키: 원본 바이트 hash (extracted_text 가 아니라!) → 같은 파일 재업로드 시 캐시 hit
+# - LLM 호출: PDF 와 동일한 EXTRACTION_USER_TEMPLATE 사용
+# - 페이지 개념 없음 → page_count=1, 모든 items.page=1 로 검증
+
+def analyze_text(
+    raw_bytes: bytes,
+    extracted_text: str,
+    original_filename: Optional[str] = None,
+    source_type: str = "text",
+    source_ext: str = "",
+    *,
+    provider: Optional[LLMProvider] = None,
+    use_cache: bool = True,
+) -> dict:
+    """이미 추출된 평문 텍스트를 7카테고리로 분석.
+
+    Args:
+      raw_bytes:       원본 파일 바이트 (캐시 hash 계산용)
+      extracted_text:  raw_bytes 에서 미리 추출한 평문
+      source_type:     "hwpx" | "hwp" | "text" — 분석 결과의 source_type 필드에 기록
+      source_ext:      원본 저장용 확장자 (예: ".hwpx"). 비우면 storage 에 저장 안 함.
+    """
+    started = time.time()
+
+    if not extracted_text or not extracted_text.strip():
+        raise LLMError("추출된 텍스트가 비어있습니다 (원본 파일에 본문이 없거나 파싱 실패)")
+
+    file_hash = compute_file_hash(raw_bytes)
+
+    if use_cache:
+        cached = load_analysis(file_hash)
+        if cached is not None and cached.get("schema_version") == SCHEMA_VERSION:
+            cached["cache_hit"] = True
+            return cached
+
+    if source_ext:
+        save_source(raw_bytes, source_ext)
+    # 추출 텍스트도 캐시 (재분석/검토용)
+    from .extractor import ExtractedDocument
+    save_extract(file_hash, ExtractedDocument(full_text=extracted_text, page_count=1, pages=[extracted_text]))
+
+    if provider is None:
+        provider = get_llm_provider()
+
+    # 섹션 자동 분리는 PDF 와 같은 흐름 — HWPX 도 헤더로 절 구분돼 있는 경우가 많음
+    input_text, section_meta = _build_section_input(extracted_text)
+    user_prompt = _EXTRACTION_USER_TEMPLATE_TEXT.format(full_text=input_text)
+
+    try:
+        llm_result = provider.complete(
+            system=EXTRACTION_SYSTEM_PROMPT,
+            user=user_prompt,
+            response_schema=EXTRACTION_SCHEMA,
+            max_tokens=5000,
+        )
+    except LLMError:
+        raise
+
+    if not isinstance(llm_result, dict):
+        raise LLMError(f"Expected dict from LLM (schema was set), got {type(llm_result).__name__}")
+
+    # 텍스트 기반은 단일 페이지로 강제 + 검증
+    _force_single_page(llm_result)
+    issues = _validate_analysis(llm_result, page_count=1)
+
+    empty_section = {"items": [], "extraction_note": ""}
+    analysis = {
+        "source_file":   original_filename or f"{file_hash}{source_ext or '.txt'}",
+        "source_type":   source_type,
+        "file_hash":     file_hash,
+        "page_count":    1,
+        "schema_version": SCHEMA_VERSION,
+        "eligibility":    llm_result.get("eligibility",    dict(empty_section)),
+        "warnings":       llm_result.get("warnings",       dict(empty_section)),
+        "schedule":       llm_result.get("schedule",       dict(empty_section)),
+        "support_amount": llm_result.get("support_amount", dict(empty_section)),
+        "required_docs":  llm_result.get("required_docs",  dict(empty_section)),
+        "evaluation":     llm_result.get("evaluation",     dict(empty_section)),
+        "obligations":    llm_result.get("obligations",    dict(empty_section)),
+        "missing_sections":  llm_result.get("missing_sections", []),
+        "validation_issues": issues,
+        "section_extraction": section_meta,
+        "elapsed_seconds":    round(time.time() - started, 2),
+        "cache_hit":          False,
+    }
+
+    save_analysis(file_hash, analysis)
+    return analysis
+
+
 def analyze_attachment(
     file_bytes: bytes,
     original_filename: str,
@@ -302,19 +422,20 @@ def analyze_attachment(
     provider: Optional[LLMProvider] = None,
     use_cache: bool = True,
 ) -> dict:
-    """파일 형식 자동 dispatch — PDF → analyze_pdf, 이미지 → analyze_image.
+    """파일 형식 자동 dispatch — PDF / 이미지 / HWPX 를 한 진입점에서.
 
     분기 우선순위:
-      1. mime_type 인자
-      2. 파일명 확장자 (.pdf / .jpg .jpeg .png .webp)
+      1. mime_type 인자 (application/pdf, image/*, application/hwp+xml 등)
+      2. 파일명 확장자 (.pdf / .jpg .jpeg .png .webp / .hwpx)
 
     지원하지 않는 형식은 LLMError.
     """
     name = (original_filename or "").lower()
     mt = (mime_type or "").lower()
 
-    is_pdf = (mt == "application/pdf") or name.endswith(".pdf")
+    is_pdf  = (mt == "application/pdf") or name.endswith(".pdf")
     is_image = mt.startswith("image/") or any(name.endswith(e) for e in (".jpg", ".jpeg", ".png", ".webp"))
+    is_hwpx = name.endswith(".hwpx") or "hwp+xml" in mt or "hwpx" in mt
 
     if is_pdf:
         return analyze_pdf(
@@ -331,6 +452,21 @@ def analyze_attachment(
             file_bytes,
             original_filename=original_filename,
             mime_type=mt,
+            provider=provider,
+            use_cache=use_cache,
+        )
+    if is_hwpx:
+        from .hwpx_extractor import extract_hwpx_text
+        try:
+            text = extract_hwpx_text(file_bytes)
+        except ValueError as e:
+            raise LLMError(f"HWPX 파싱 실패: {e}") from e
+        return analyze_text(
+            file_bytes,
+            text,
+            original_filename=original_filename,
+            source_type="hwpx",
+            source_ext=".hwpx",
             provider=provider,
             use_cache=use_cache,
         )

@@ -86,6 +86,31 @@ def get_image_path(file_hash: str) -> Optional[Path]:
     return None
 
 
+def _sources_dir() -> Path:
+    p = _STORAGE_ROOT / "sources"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def save_source(file_bytes: bytes, ext: str) -> str:
+    """PDF/이미지가 아닌 원본 파일(HWPX, HWP 등) 을 hash 파일명으로 저장. file_hash 반환.
+
+    ext 는 점 포함 (예: '.hwpx').
+    """
+    file_hash = compute_file_hash(file_bytes)
+    ext = ext if ext.startswith(".") else f".{ext}"
+    path = _sources_dir() / f"{file_hash}{ext}"
+    if not path.exists():
+        path.write_bytes(file_bytes)
+    return file_hash
+
+
+def get_source_path(file_hash: str) -> Optional[Path]:
+    for p in _sources_dir().glob(f"{file_hash}.*"):
+        return p
+    return None
+
+
 def save_extract(file_hash: str, doc: ExtractedDocument) -> None:
     (_extracts_dir() / f"{file_hash}.txt").write_text(doc.full_text, encoding="utf-8")
 
@@ -116,7 +141,7 @@ def load_analysis(file_hash: str) -> Optional[dict]:
 
 
 def delete_attachment(file_hash: str) -> None:
-    for d in (_pdfs_dir(), _images_dir(), _extracts_dir(), _analyses_dir()):
+    for d in (_pdfs_dir(), _images_dir(), _sources_dir(), _extracts_dir(), _analyses_dir()):
         # 확장자가 디렉터리마다 다르니 일괄 처리하지 말고 glob
         for p in d.glob(f"{file_hash}.*"):
             try:
