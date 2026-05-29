@@ -197,6 +197,9 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_schedule_all()
         elif path == "/api/plan":
             self._handle_plan(parsed.query)
+        elif path.startswith("/api/announcements/") and path.endswith("/auto-attachments"):
+            ann_id_str = path[len("/api/announcements/"):-len("/auto-attachments")]
+            self._handle_auto_attachments_get(ann_id_str)
         elif path == "/api/auth/me":
             self._handle_auth_me()
         elif path == "/api/profile":
@@ -351,6 +354,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/plan/guide":
             self._handle_plan_guide()
+            return
+        if path.startswith("/api/announcements/") and path.endswith("/auto-fetch"):
+            ann_id_str = path[len("/api/announcements/"):-len("/auto-fetch")]
+            self._handle_auto_fetch_post(ann_id_str)
             return
         if path == "/api/upload":
             self._handle_upload()
@@ -668,6 +675,77 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"가이드 생성 실패: {e}"}, status=500)
             return
+        self._send_json(result)
+
+    # ─── Step 4: 공고 페이지 자동 fetch + 분석 ────────────────────────
+    def _handle_auto_attachments_get(self, ann_id_str: str) -> None:
+        """공고에 대해 이미 자동 수집/분석된 첨부 목록 조회 (트리거 X, 캐시만).
+
+        GET /api/announcements/{ann_id}/auto-attachments
+        Response: { "announcement_id": int, "attachments": [...], "count": int }
+        """
+        from planner.auto_fetcher import list_auto_attachments
+
+        # 로그인 안 해도 조회는 허용 (공고는 public)
+        try:
+            ann_id = int(ann_id_str)
+        except ValueError:
+            self._send_json({"error": "ann_id must be integer"}, status=400)
+            return
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            attachments = list_auto_attachments(conn, ann_id, include_analysis=True)
+        finally:
+            conn.close()
+        self._send_json({
+            "announcement_id": ann_id,
+            "attachments":     attachments,
+            "count":           len(attachments),
+        })
+
+    def _handle_auto_fetch_post(self, ann_id_str: str) -> None:
+        """공고 페이지에서 첨부 자동 fetch + 분석 트리거 (동기).
+
+        POST /api/announcements/{ann_id}/auto-fetch
+        Body (선택): { "force": bool, "max_files": int }
+        Response: fetch_and_analyze_announcement 의 dict 그대로
+        """
+        from planner.auto_fetcher import fetch_and_analyze_announcement
+
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            ann_id = int(ann_id_str)
+        except ValueError:
+            self._send_json({"error": "ann_id must be integer"}, status=400)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8")) if raw.strip() else {}
+        except json.JSONDecodeError:
+            data = {}
+        force = bool(data.get("force"))
+        try:
+            max_files = int(data.get("max_files") or 10)
+        except (TypeError, ValueError):
+            max_files = 10
+        max_files = max(1, min(max_files, 20))
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        try:
+            try:
+                result = fetch_and_analyze_announcement(
+                    conn, ann_id, max_files=max_files, force=force,
+                )
+            except Exception as e:  # noqa: BLE001
+                self._send_json({"error": f"auto-fetch 실패: {e}"}, status=500)
+                return
+        finally:
+            conn.close()
         self._send_json(result)
 
     def _load_profile_for_user(self) -> dict | None:

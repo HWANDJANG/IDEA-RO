@@ -232,6 +232,27 @@ CREATE TABLE IF NOT EXISTS user_documents (
     created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_user_documents_user ON user_documents(user_id);
+
+-- Phase 7 (Step 4): 공고 페이지에서 자동 수집한 첨부파일. 시스템 소유 (user_id 없음) —
+-- 같은 공고를 여러 사용자가 봐도 한 번만 다운로드/분석. (announcement_id, source_url) dedup.
+-- file_hash 가 채워지면 analyses/{file_hash}.json 으로 7카테고리 조회.
+CREATE TABLE IF NOT EXISTS announcement_auto_attachments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+    source_url      TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    file_hash       TEXT,                       -- 분석 완료 후 채워짐 (analyses/{hash}.json 키)
+    file_format     TEXT,                       -- 'pdf' | 'image' | 'hwpx' | null(unsupported)
+    status          TEXT NOT NULL DEFAULT 'pending', -- pending | done | skipped | failed
+    error_message   TEXT,
+    skipped_reason  TEXT,                       -- 'unsupported_format' | 'too_large' | 'download_failed'
+    fetched_at      TEXT,
+    analyzed_at     TEXT,
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (announcement_id, source_url)
+);
+CREATE INDEX IF NOT EXISTS idx_auto_attachments_ann ON announcement_auto_attachments(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_auto_attachments_hash ON announcement_auto_attachments(file_hash);
 """
 
 
