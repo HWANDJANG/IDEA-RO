@@ -66,38 +66,43 @@
 │   ├── auth.py                   ← 카카오/Google/Naver OAuth + HMAC 쿠키 + Calendar 토큰 관리
 │   ├── checker.py                ← 서류 만료 계산 + 발급 태스크
 │   ├── matcher.py                ← 공고 ↔ 보유 서류 + 프로필 매칭 + 공고 유형 분류 (6개 묶음)
-│   ├── planner.py                ← 🧭 맞춤 플랜 (Top N + 가중치 + LLM narrative + 액션 가이드 A/B/C)
-│   ├── attach_fetcher.py         ← 공고 페이지 URL → 첨부 PDF 자동 수집 (K-Startup/NRF/NTIS)
+│   ├── planner.py                ← 🎯 내 액션 플랜 (Top N + 가중치 + LLM narrative + 액션 가이드 A/B/C + extracted_events)
+│   ├── auto_fetcher.py           ← 공고 페이지 자동 fetch + 분석 백엔드 (Step 4) — DB row 시스템 공유, magic 검증, idempotent
+│   ├── attach_fetcher.py         ← 공고 페이지 URL → 첨부 자동 수집 스크래퍼 (K-Startup/NRF/NTIS)
 │   ├── document_master.py        ← 30개 정부 서류 마스터 데이터
 │   ├── eligibility_extractor.py  ← 비-K-Startup 공고 자격 메타 LLM 추출
 │   ├── ics_export.py             ← 캘린더 ICS 빌더 (RFC 5545)
 │   ├── multipart.py              ← multipart/form-data 파서
 │   ├── paths.py                  ← 경로 상수
 │   │
-│   ├── analyzer/                 ← PDF + LLM 분석 파이프라인
-│   │   ├── analyzer.py           ← 메인: hash→캐시→섹션분리→LLM→저장 + 비교/채팅
+│   ├── analyzer/                 ← 파일 → 7카테고리 LLM 분석 파이프라인
+│   │   ├── analyzer.py           ← 메인 dispatcher: analyze_pdf / analyze_image / analyze_text + analyze_attachment + 비교/채팅
 │   │   ├── extractor.py          ← PyMuPDF 텍스트 + 정규식 섹션 분리(find_sections)
+│   │   ├── hwpx_extractor.py     ← HWPX (신형) ZIP+XML 파싱 (stdlib, 외부 의존성 0)
+│   │   ├── hwp_extractor.py      ← HWP (구형, HWP5/OLE2) pyhwp hwp5txt CLI 호출 + venv 환경 보강
 │   │   ├── prompts.py            ← 시스템 프롬프트 + 7카테고리 JSON 스키마
-│   │   ├── storage.py            ← PDF/extract/analysis/derived 파일 캐시
+│   │   ├── storage.py            ← pdfs/images/sources/extracts/analyses/derived 파일 캐시
 │   │   ├── doc_scanner.py        ← 발급내역 이미지 OCR (Gemini Vision)
 │   │   ├── dotenv.py             ← .env 로더 (표준 라이브러리)
 │   │   └── llm/
-│   │       ├── base.py           ← LLMProvider ABC + create_cache 인터페이스
+│   │       ├── base.py           ← LLMProvider ABC + create_cache + complete_vision 인터페이스
 │   │       ├── gemini.py         ← Gemini (text + vision + 명시 캐싱)
 │   │       ├── claude.py         ← Anthropic (ephemeral system caching)
 │   │       ├── openai.py         ← placeholder
 │   │       └── registry.py       ← 환경변수로 프로바이더 선택
 │   │
-│   └── storage/                  ← 사용자 업로드 + derived 캐시 (gitignore)
+│   └── storage/                  ← 사용자 업로드 + 자동 fetch 캐시 (gitignore)
 │       ├── pdfs/{hash}.pdf
+│       ├── images/{hash}.{jpg|png|webp}   ← Step 1
+│       ├── sources/{hash}.{hwpx|hwp}      ← Step 2 + A
 │       ├── extracts/{hash}.txt
-│       ├── analyses/{hash}.json  ← 7카테고리 구조화 추출 (schema_version=2)
-│       └── derived/{key}.json    ← 폴더-단위 derived (일정 dedup 등)
+│       ├── analyses/{hash}.json           ← 7카테고리 구조화 추출 (schema_version=2)
+│       └── derived/{key}.json             ← 폴더 / 맞춤 플랜 derived
 │
 └── public/
     ├── index.html                ← 랜딩 (3-provider 로그인 모달 + Last used 표시)
     ├── onboarding.html           ← 3-provider 로그인 + 기업 프로필 입력
-    └── dashboard.html            ← 메인 SPA (6탭, ~6700줄)
+    └── dashboard.html            ← 메인 SPA (2탭 통합 후 ~7000줄)
 ```
 
 ---
@@ -107,9 +112,20 @@
 ### 사전 준비
 
 ```bash
-# Python 3.13
+# Python 3.10+ (3.13 권장)
 pip install -r requirements.txt
 ```
+
+> **HWP 분석 (구형 hwp5)**: `pyhwp>=0.1b15` + `six>=1.16` 가 같이 설치됨. `hwp5txt` CLI 가 venv/bin 또는 시스템 PATH 에 자동 등록되어야 함. 검증:
+> ```bash
+> hwp5txt --version  # 또는: python -m hwp5.hwp5txt --version
+> ```
+>
+> **AWS Ubuntu 24.04 + venv 환경 주의**:
+> - 시스템 pip 가 PEP 668 로 차단되므로 venv 사용 권장
+> - venv 의 pip 로 설치: `~/IDEA-RO/venv/bin/pip install -r requirements.txt`
+> - systemd ExecStart 가 venv/bin/python 가리켜야 함
+> - 코드의 `_find_hwp5txt()` 가 `sys.executable` 디렉터리 기준으로 hwp5txt 탐색 → venv 자동 인식
 
 ### .env 파일 만들기
 
@@ -199,29 +215,31 @@ K-Startup 250건 기준 약 2~3분.
 
 ---
 
-## 🧭 화면 구성 (7개 탭)
+## 🧭 화면 구성 (사이드바 2탭 통합 — 옵션 B)
 
 > 🎨 **디자인 v2 공통**: 좌측 고정 사이드바 + 워크스페이스 스위처 (서류 체커 / 아이디어 검증) + 그룹 라벨 (탐색·마이페이지) + 하단 계정 카드 (아바타·기업명·로그아웃). 상단 topbar 제거. 각 페인 타이틀은 28px 세리프 (`--serif-ko`).
+>
+> **🔀 4탭 → 2탭 통합 (2026-05-30)**: 기존 「공고 둘러보기 · 공고 매칭 · 공고 분석 · 맞춤 플랜」 4개 → **「🔍 공고 둘러보기」 + 「🎯 내 액션 플랜」 2개**. 자동 fetch 도입으로 공고 분석은 카드 펼침에 인라인 흡수, 매칭은 둘러보기 안 토글 모드로 합쳐짐.
 
 1. **🏠 홈** — 만료된 서류 / D-30 임박 서류 / 다가오는 공고 마감 / 다가오는 일정.
    - **상단 그리드 카드**: 다가오는 일정을 232px+ 컴팩트 카드 (`.home-sched-grid`) 로 한 줄에 여러 개 표시. 좌측 색 블록 D-day (urgent ≤3 빨강 / imm ≤7 주황 / calm 그 외 파랑).
    - **하단 2열 레이아웃** (`.home-cols`): 좌=서류 만료(만료 + 임박), 우=공고 마감.
 2. **📁 내 서류** — 보유 서류 등록 (휠 피커 + 자동완성 + 📷 사진 OCR), 상태별 색 구분. **DB 저장 (사용자별 격리)** — 다른 OAuth 계정으로 들어가면 각자의 목록만 보임. 비로그인 시엔 localStorage fallback.
-3. **🔍 공고 둘러보기** — 4개 출처 전체 공고 카탈로그 + 검색/필터 + **유형 필터 칩** (매칭과 독립 상태) + 제목 컬럼에 유형 배지.
-4. **🎯 공고 매칭** — 기업 프로필 + 보유 서류 기반 적합도 정렬.
-   - **카드 리뉴얼 (Phase B)**: 카드가 **좌측 본문 (`.match-main`) + 우측 비교 zone (`.match-cmp-zone`)** 의 쿠폰 절취선 스타일. 우측 영역 클릭으로 비교 선택 (체크박스 시각화: 26px 박스 + ✓). 비교 선택 시 카드 전체에 primary 색 외곽 글로우.
-   - **3단계 서류 상태 pill**: ✓ 서류 완비 (초록) / ⚠ 만료 위험 (주황) / ✗ 서류 부족 (빨강) — 헤더 우측에서 한눈에 진행도 파악.
-   - **상세보기 토글**: 카드 헤더 영역 또는 우측 `상세보기 ▾` 버튼 클릭 → 펼침. 펼친 카드는 토글 버튼이 primary 색.
-   - **유형 필터 칩**: 💰 자금 지원 / 🏢 입주·공간 / 🎓 교육·멘토링 / 🔬 R&D·기술 / 🌏 판로·글로벌 / 🎯 행사·네트워크 (다중 선택, 카드별 카운트).
-   - **D-day 알약**: `≤7일 빨강 / 그 외 파랑` 메타라인에 inline 표시.
-   - **📎 PDF 첨부** — 파일 업로드 또는 **공고 페이지 URL 붙여넣기** → 서버가 첨부 PDF 자동 수집 + 선택 가져오기 (K-Startup Synap 뷰어 우회).
-5. **📊 공고 분석** — PDF 폴더 단위 관리.
-   - PDF 업로드 → 자동으로 **7카테고리 추출** (자격·지원금·서류·평가·의무·유의·일정). 상단 드래그앤드롭 + 첨부파일 섹션 헤더의 **+ PDF 추가** 버튼 (어디서든 추가 가능).
-   - **📋 통합 요약**: 폴더 안 모든 PDF의 7카테고리를 한꺼번에 그룹별 표시
-   - **📅 일정 추출**: 폴더 내 PDF 들의 일정을 LLM 없이 Python merge + dedup
-   - **💬 폴더 Q&A**: PDF 본문 기반 자유 채팅
-
-5.5. **🧭 맞춤 플랜 (엔드 투 엔드)** — 추천부터 일정/캘린더 등록까지 한 흐름.
+3. **🔍 공고 둘러보기** — 두 모드 토글 + 카드 펼침에 자동 분석 인라인.
+   - **📋 전체 목록 모드 (기본)**: 4개 출처 진행 중 공고 카탈로그 + 검색/정렬/즐겨찾기 + 유형 필터 칩. 자격 매칭 없이 모든 공고 표시.
+   - **🎯 자격 맞춤 모드**: 기업 프로필 + 보유 서류 기반 추천순 카드. 한 토글로 둘 사이 즉시 전환.
+   - **카드 리뉴얼**: 좌측 본문 (`.match-main`) + 우측 비교 zone (`.match-cmp-zone`) 쿠폰 절취선 스타일. 비교 선택 시 카드 전체에 primary 색 외곽 글로우.
+   - **3단계 서류 상태 pill**: ✓ 완비 (초록) / ⚠ 만료 위험 (주황) / ✗ 부족 (빨강).
+   - **유형 필터 칩 (6묶음)**: 💰 자금 지원 / 🏢 입주·공간 / 🎓 교육·멘토링 / 🔬 R&D·기술 / 🌏 판로·글로벌 / 🎯 행사·네트워크.
+   - **📊 카드 펼침 시 자동 분석 결과 인라인 표시** (옛 "공고 분석" 탭 흡수):
+     - 공고 페이지 첨부를 **PDF / 이미지 / HWPX / HWP 모두 자동 다운/분석** (Step 1~4 + A)
+     - 포맷별 아이콘: 📄 PDF · 🖼️ 이미지 · 📋 HWPX · 📝 HWP · 📦 미지원
+     - 카테고리별 추출 카운트 (자격N · 일정N · 지원금N · 서류N · 평가N · 의무N · 유의N)
+     - 📅 추출된 일정 리스트 + 🗓️ Google · N 네이버 캘린더 일괄 등록 버튼
+     - 분석 안 된 공고는 펼치는 순간 자동 트리거 (lazy, 로그인 사용자만)
+     - "+ 내 자료 추가" 보조 버튼 — 자동 안 된 케이스 fallback
+   - **공고 비교**: 카드 다중 선택 → 비교 보기 → 자동 fetch 분석을 LLM 비교에 즉시 활용 (사용자가 PDF 한 번도 직접 첨부 안 해도 정밀 비교 가능, 옵션 B-1)
+4. **🎯 내 액션 플랜 (엔드 투 엔드)** — 추천부터 일정/캘린더 등록까지 한 흐름. (이전 "맞춤 플랜")
    - **3 슬라이더로 가중치 조정**: 💰 지원금 규모 / ⚡ 노력 회피 / ⏰ 마감 임박 (0~100). 프리셋 4종 (균형 / 고액 / 쉬운 / 마감 우선). 변경 시 debounce 300ms 후 자동 재호출 + 재정렬.
    - **Top N 추천 카드** (3/5/10 선택): 자격 매칭 + 보유 서류 + 지원금 규모 + 노력 등급 + D-day 종합 점수. 각 카드에 💰 amount + ⚙️ effort 배지, 점수 hover tooltip 으로 raw score 분해(profile + urgency + amount − effort).
    - **✨ AI narrative**: 각 카드 헤더 아래 "왜 이 공고가 당신에게 맞는지" 한 줄 (백그라운드 Gemini Flash Lite, 캐시 적중 시 ₩0).
@@ -232,7 +250,7 @@ K-Startup 250건 기준 약 2~3분.
      - **C**: 담은 공고에 분석된 PDF 있으면 평가 기준·의무사항·지원금 상세·유의사항까지 인용 ("기술성 40%, 사업성 30%" / "협약 후 2년 정규직 의무"). 가이드 헤더에 `📄 PDF N건 활용` 배지로 시그널.
    - **통합 액션 타임라인**: 담은 공고들의 발급 태스크 + 신청 마감 시간순. 같은 서류는 가장 빠른 due 로 dedup ("N개 공고 공통" 라벨).
    - **🗓️ Google / N 네이버 캘린더 일괄 등록**: 선택 체크박스 + 전체/발급만/마감만 필터 + 기존 `/api/calendar/*/insert` 재사용.
-6. **📅 캘린더** — 월간 그리드, 공고 일정 + 보유 서류 만료일 통합 표시. **모던 리뉴얼 (v2)**.
+5. **📅 캘린더** — 월간 그리드, 공고 일정 + 보유 서류 만료일 통합 표시. **모던 리뉴얼 (v2)**.
    - **주 단위 Timeline Bar**: 기간 이벤트(접수기간 등)는 매일 칩으로 도배되지 않고 **연속 막대**로 표시 (Google Calendar 종일 일정 스타일). 주 경계 잘림은 `‹` `›` 마커.
    - **색 시스템**: bar 색 = 폴더(공고)별 고유 색 → 같은 공고 한눈에 묶임. 좌측 액센트 strip + 카테고리 아이콘 prefix(📝 접수·🏆 발표·📊 평가·📋 서류·🤝 협약). 마감 D-7 이내는 **빨강 펄스 D-day 배지**.
    - **사이드 패널** (일정 클릭 시): 제목·공고·날짜·진행률 막대·메모·**준비 서류 요약**(매칭된 공고면 보유/임박/만료/미보유)·**추천 액션**(이 일정만 G/N 캘린더 추가, 원본 공고 열기, 일괄 선택 토글).
@@ -240,7 +258,7 @@ K-Startup 250건 기준 약 2~3분.
    - **세 가지 일괄 등록 방식**: 카테고리 1-클릭 [G][N] / 선택 N개 → 툴바 / 월간 전체 선택.
    - 네이버 401 (errorCode 024) 감지 시 `auth_type=reauthenticate` 로 강제 재동의 안내.
    - **수동 등록 방식** (자동 양방향 동기화 아님 — 새 일정 생기면 매번 재선택 필요).
-7. **🏢 기업 프로필** — 사이드바에 별도 탭 없음. **하단 계정 카드 클릭** 으로 진입.
+6. **🏢 기업 프로필** — 사이드바에 별도 탭 없음. **하단 계정 카드 클릭** 으로 진입.
    - **3 섹션 분리**: ① 기본 정보 (기업명·사업자등록번호·대표·설립일·법인등록번호·업종코드) / ② 소재지·연락처 (지역·주소·전화·이메일·팩스·웹사이트) / ③ 업종 (chip 다중 선택 + 업태 자유 입력 카드).
    - 지역(`pf-region-display`) 은 Daum 우편번호 검색 시 자동 동기화 readonly 입력.
    - 모든 `pf-*` ID 는 `saveProfileForm()` 과 호환 — 기능 100% 보존.
@@ -249,7 +267,7 @@ K-Startup 250건 기준 약 2~3분.
 
 ## 🆚 공고 비교 기능
 
-매칭 탭에서 공고 2~4개 체크 → 하단 플로팅 바 → "비교 보기"
+**둘러보기 > 자격 맞춤 모드** 에서 공고 2~4개 체크 → 하단 플로팅 바 → "비교 보기"
 
 ### 1차: 정형 매트릭스 (LLM 없음)
 
@@ -264,20 +282,28 @@ K-Startup 250건 기준 약 2~3분.
 
 → **다른 셀이 있는 행은 좌측 4px 주황 사이드바 + 옅은 주황 배경** 자동 강조 (행 자체가 아니라 라벨에 띠를 띄워 더 잘 띔). 같은 값 행은 muted.
 
-### 2차: 정밀 비교 (LLM + PDF + 채팅)
+### 2차: 정밀 비교 (LLM + 자동 분석 + 채팅) — 옵션 B-1 갱신
 
-각 공고에 **📎 PDF** 버튼 → 첨부 (파일 또는 공고 URL) → "정밀 비교 시작" 클릭:
+이제 **PDF 직접 첨부 없이도 정밀 비교 가능** — 자동 fetch 된 분석 결과 (PDF/이미지/HWPX/HWP) 가 자동으로 비교 컨텍스트에 포함됨.
 
+비교 모달 진입 시 자동 처리:
+1. 각 공고에 대해 `_collect_compare_items` 가 **사용자 직접 첨부 + 자동 fetch (status=done)** 합본 조회 (`file_hash` 로 dedup, 사용자 첨부 우선)
+2. 화면 표시: "분석 자료 N건 (자동 X · 직접 Y)" — 진짜 보유한 자료량 파악
+3. 자료 0건인 공고는 비교 모달 열 때 백그라운드 자동 fetch trigger (옵션 A 와 동일 정책)
+4. **"+ 내 자료"** 보조 버튼만 남음 (점선 outline) — 자동이 메인, 수동이 fallback
+
+"🚀 정밀 비교 시작" 클릭:
 - LLM 이 **측면별 우열**만 객관 정리 ("지원금은 A 가 큼 / 의무는 B 가 가벼움" 식, "베스트 X" 같은 단정 없음)
 - 사용자 기업 프로필 자동 첨부 (PII 제외)
 - 결과 아래 채팅창 → 사용자 우선순위 입력 → LLM 이 같은 컨텍스트로 답변
-- **마크다운 자동 렌더링**: `**bold**` → 강조, `* **섹션:**` → 좌측 파랑 띠 카드, bullet → 깔끔한 리스트, "공고 A/B/C/D" → **컬러 칩**(파/초/주/핑크). 로딩은 스피너 + 메시지, 결과 도착 시 시작 버튼 자동 숨김 + 우하단 "↻ 다시 분석" 링크.
+- **마크다운 자동 렌더링**: `**bold**` → 강조, `* **섹션:**` → 좌측 파랑 띠 카드, bullet → 깔끔한 리스트, "공고 A/B/C/D" → **컬러 칩**(파/초/주/핑크).
 
 **비용 최적화 4단**:
-1. **PDF 전문 → 구조화 JSON 요약 전송** (토큰 ~95%↓)
+1. **PDF 전문 → 구조화 JSON 요약 전송** (`format_analysis_summary`, 토큰 ~95%↓)
 2. **Gemini 명시 캐시** (입력 75% 할인, TTL 10분, 채팅 턴마다 재사용)
 3. 같은 (공고 조합 + 프로필) → 같은 캐시 키
-4. **세션 1회 (PDF 3개 + 채팅 5회) 비용: ₩6~12** (이전 ₩250 → 현재)
+4. **세션 1회 (자료 3개 + 채팅 5회) 비용: ₩6~12**
+5. **자동 fetch 분석은 시스템 공유 캐시** — 같은 공고를 여러 사용자가 봐도 분석 1회 (`announcement_auto_attachments` 의 file_hash 기반)
 
 ---
 
@@ -295,6 +321,8 @@ K-Startup 250건 기준 약 2~3분.
 | GET | `/api/plan?top_n=5&w_amount=0.5&w_effort=0.3&w_urgency=0.5` | **맞춤 플랜 (LLM 없음)** — 자격 매칭 + 가중치 기반 Top N + 부족 서류 + 발급 태스크. 슬라이더 변경 시 호출. signals(amount_display, effort_label, req_doc_count) + profile_fit reasons 포함 |
 | POST | `/api/plan/narrative` | **각 카드 한 줄 narrative** (Gemini Flash Lite). Body: `{plan: {...}}` → `{narratives: {ann_id_str: "..."}, cached, count}`. 캐시 키 = user + sorted(ann_ids) + weights. 같은 슬라이더 조합 두 번 → ₩0 |
 | POST | `/api/plan/guide` | **AI 액션 가이드** (Gemini Flash Lite). Body: `{plan, picked_ids}` → `{sections, key_warning, cached, picked_count, pdf_analyzed_count}`. Step A/B/C 누적: 서류 명단 + 발급처 / 자격 reasons + 유형/지원금/노력 / 분석된 PDF 의 평가·의무·지원금 상세. 캐시 키에 시스템 프롬프트 sha + 담은 공고의 PDF hash 포함 → 프롬프트 수정·PDF 추가삭제 시 자동 invalidate |
+| GET | `/api/announcements/{id}/auto-attachments` | **자동 수집 첨부 + 추출 일정 조회** (Step 4+6). 비로그인 허용. Response: `{attachments: [{status, file_format, file_hash, analysis, ...}], extracted_events: [...]}`. 카드 펼침 시 자동 호출. attachments 0건이고 로그인 시 옵션 A lazy trigger 동작. |
+| POST | `/api/announcements/{id}/auto-fetch` | **공고 페이지에서 첨부 자동 다운/분석 트리거** (Step 4). 로그인 필요. Body: `{force?: bool, max_files?: int (1~20)}`. 동기 처리 (10~60s blocking). detail_url 스크랩 → PDF/JPG/PNG/HWPX/HWP 자동 다운 → 7카테고리 분석 → DB 저장 + 응답에 extracted_events 포함. idempotent: 이미 done 인 첨부는 skip (force=true 시 재시도). |
 
 ### 인증 + 프로필 (3-provider OAuth)
 
@@ -369,54 +397,63 @@ K-Startup 250건 기준 약 2~3분.
 
 ---
 
-## 🧠 LLM 사용처 (9종)
+## 🧠 LLM 사용처 (12종)
 
 | # | 함수 | 트리거 | 입력 | 토큰 (전형) | 비용/회 | 캐시 |
 |---|---|---|---|---|---|---|
-| 1 | `analyze_pdf` | `/api/upload` | PDF 섹션 분리본 (~70%) | 5~50K | ₩2~10 | 파일 hash (영구) |
-| 2 | `merge_schedule_items` | `/api/folders/{id}/extract-schedule` | — | 0 (Python) | **₩0** | derived 캐시 |
-| 3 | `ask_folder_question` | `/api/folders/{id}/ask` | 폴더 PDF 합본 + 질문 | 15~150K | ₩5~30 | 없음 (RAG 도입 예정) |
-| 4 | `compare_announcements` | `/api/compare/initial` | PDF 구조화 요약 N개 + 프로필 + 지시 | 5~30K | ₩1~5 | Gemini 명시 캐시 |
-| 5 | `chat_compare` | `/api/compare/chat` | (캐시) + 히스토리 + 질문 | 변동분 2~5K | ₩2~3 | #4 캐시 재사용 |
-| 6 | `scan_doc_image` | `/api/docs/scan` | 이미지 1장 | 1K | ₩1~2 | 없음 |
-| 7 | `extract_llm_eligibility` | `backfill_eligibility.py` | 공고 본문 | 1~10K | ₩0.5~3 | 없음 (1회성) |
-| 8 | `generate_recommendation_narratives` | `/api/plan/narrative` | profile(safe) + 추천 카드 N개 라이트 라인 + 가중치 | 2~5K | ₩1~3 | derived (user + ann_ids + weights) |
-| 9 | `generate_action_guide` | `/api/plan/guide` | profile + 담은 공고 풀 컨텍스트(서류 4분할 + 자격 reasons + 유형/지원금/노력) + 통합 발급 태스크 + (있으면) PDF 분석 요약 | 3~15K | ₩2~8 | derived (sys_hash + user + picked + today + PDF hashes) |
+| 1 | `analyze_pdf` | `/api/upload` 또는 자동 fetch | PDF 섹션 분리본 (~70%) | 5~50K | ₩2~10 | 파일 hash (영구) |
+| 2 | **`analyze_image`** | `/api/upload` (JPG/PNG/WEBP) 또는 자동 fetch | 이미지 1장 (Gemini Vision) | 1~5K | ₩2~3 | 파일 hash (영구) |
+| 3 | **`analyze_text`** | HWPX/HWP 자동 dispatch | 추출된 평문 | 5~50K | ₩2~10 | 파일 hash (영구) |
+| 4 | `merge_schedule_items` | `/api/folders/{id}/extract-schedule` 또는 `_load_extracted_events_for_announcement` | — | 0 (Python) | **₩0** | derived 캐시 |
+| 5 | `ask_folder_question` | `/api/folders/{id}/ask` | 폴더 PDF 합본 + 질문 | 15~150K | ₩5~30 | 없음 (RAG 도입 예정) |
+| 6 | `compare_announcements` | `/api/compare/initial` | **자동 fetch + 직접 첨부 합본** 구조화 요약 + 프로필 | 5~30K | ₩1~5 | Gemini 명시 캐시 |
+| 7 | `chat_compare` | `/api/compare/chat` | (캐시) + 히스토리 + 질문 | 변동분 2~5K | ₩2~3 | #6 캐시 재사용 |
+| 8 | `scan_doc_image` | `/api/docs/scan` | 발급내역 이미지 1장 | 1K | ₩1~2 | 없음 |
+| 9 | `extract_llm_eligibility` | `backfill_eligibility.py` | 공고 본문 | 1~10K | ₩0.5~3 | 없음 (1회성) |
+| 10 | `generate_recommendation_narratives` | `/api/plan/narrative` | profile(safe) + 추천 카드 N개 라이트 라인 + 가중치 | 2~5K | ₩1~3 | derived (user + ann_ids + weights) |
+| 11 | `generate_action_guide` | `/api/plan/guide` | profile + 담은 공고 풀 컨텍스트 + 통합 발급 태스크 + (있으면) **자동/직접 합본 PDF 분석 요약** | 3~15K | ₩2~8 | derived (sys_hash + user + picked + today + PDF hashes) |
+| 12 | **자동 fetch trigger** | `compose_action_plan` (Top N 백그라운드) / 카드 펼침 (옵션 A lazy) / 비교 모달 (Fix 4) | `auto_fetcher.fetch_and_analyze_announcement` → 스크랩 + 다운 + #1/#2/#3 호출 | 변동 (per file) | ₩3~5/file | DB row idempotent (status='done' 이면 skip) + 파일 hash |
 
 ### 비용 시나리오
 
 | 사용자 행동 | 비용 |
 |---|---|
-| 같은 PDF 두 번 업로드 | ₩0 (hash 캐시) |
+| 같은 PDF/HWP/이미지 두 번 업로드 | ₩0 (hash 캐시) |
 | 새 PDF 1개 업로드 | ₩2~10 (#1) |
+| 새 JPG/PNG 1장 업로드 | ₩2~3 (#2) |
+| 새 HWPX/HWP 1개 업로드 | ₩2~10 (#3) |
 | 폴더 일정 추출 | ₩0 (Python) |
-| 정밀 비교 시작 (PDF 3개) | ₩1~5 (#4, 캐시 + 요약) |
-| 비교 채팅 10회 (10분 내) | ₩20~30 (#5 × 10, 캐시 적중) |
-| 발급내역 이미지 OCR | ₩1~2 (#6) |
-| 맞춤 플랜 첫 호출 (Top 5 narrative + 가이드) | ₩3~10 (#8 + #9) |
+| 정밀 비교 시작 (자료 3개) | ₩1~5 (#6, 캐시 + 요약) |
+| 비교 채팅 10회 (10분 내) | ₩20~30 (#7 × 10, 캐시 적중) |
+| 발급내역 이미지 OCR | ₩1~2 (#8) |
+| 맞춤 플랜 첫 호출 (Top 5 narrative + 가이드) | ₩3~10 (#10 + #11) |
 | 슬라이더 조정 (같은 조합 재호출) | ₩0 (캐시 적중) |
 | 같은 picked + 같은 날짜 가이드 재호출 | ₩0 (캐시 적중) |
-| PDF 분석된 공고 5개 담아 가이드 (Step C 본격) | ₩8~15 (#9, PDF 요약 5건 결합) |
+| 카드 펼침 시 자동 fetch (옵션 A, 새 공고) | ₩3~15 (PDF/이미지/HWP 평균 2건 × ₩3~5) |
+| 같은 공고 N명이 봐도 | ₩3~15 (시스템 공유 캐시, 첫 1명만) |
+| 진행중 343 공고 일괄 사전 분석 (1회) | ₩1,500~2,000 (일부 HWP 만 있는 공고는 분석 가능, NTIS 는 form-POST 미구현으로 fail) |
 
 ---
 
-## 🧱 캐싱 4층 구조
+## 🧱 캐싱 6층 구조
 
 ```
 ┌─────────────────────────────────────────────────┐
 │ Layer 1: 파일 hash 캐시 (analyses/*.json)        │
-│   - 같은 PDF 재업로드 → analyze_pdf 건너뜀       │
+│   - PDF / 이미지 / HWPX / HWP 분석 결과 보관     │
+│   - 같은 파일 재업로드 → LLM 호출 0              │
 │   - SCHEMA_VERSION 바뀌면 자동 무효화             │
 └─────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────┐
 │ Layer 2: extracts 캐시 (extracts/*.txt)         │
-│   - PyMuPDF 추출 결과 보관                       │
+│   - PyMuPDF / hwpx / hwp5txt 추출 결과 보관      │
 │   - 모든 후속 처리(merge, ask 등) 가 재사용       │
 └─────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────┐
 │ Layer 3: derived 캐시 (derived/*.json)          │
-│   - 폴더-단위 계산 결과 (예: schedule dedup)     │
+│   - 폴더-단위 계산 결과 (schedule dedup, 가이드) │
 │   - 키 = 폴더ID + PDF hash 들 정렬 (자동 무효화) │
+│   - 맞춤 플랜 narrative / guide 캐시도 여기      │
 └─────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────┐
 │ Layer 4: Gemini 명시 캐시 (비교 세션 단위)        │
@@ -424,7 +461,26 @@ K-Startup 250건 기준 약 2~3분.
 │   - TTL 10분, 입력 토큰 75% 할인                  │
 │   - 같은 (공고 조합 + 프로필) → 같은 캐시 키      │
 └─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│ Layer 5: 자동 fetch 시도 결과 (DB, 시스템 공유)   │
+│   - announcement_auto_attachments 테이블          │
+│   - (announcement_id, source_url) UNIQUE          │
+│   - status: pending|done|skipped|failed           │
+│   - file_hash → Layer 1 의 analyses/*.json 연결  │
+│   - 같은 공고를 여러 사용자가 봐도 fetch 1회만   │
+│   - idempotent: done 인 건 force=true 만 재시도   │
+└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│ Layer 6: 맞춤 플랜 가이드 캐시 (Step C 통합)     │
+│   - derived/plan_guide_{user_id}_{hash}.json     │
+│   - 키 = sha(_GUIDE_SYSTEM) + user + picked +    │
+│         today + 분석된 PDF hashes 합본            │
+│   - 시스템 프롬프트 수정 / 사용자 첨부 / 자동    │
+│     fetch 결과 추가 모두 자동 invalidate          │
+└─────────────────────────────────────────────────┘
 ```
+
+**Layer 1 + 5 의 시너지**: 자동 fetch 가 새 공고에서 PDF 다운/분석 → file_hash 가 다른 공고의 동일 PDF (가끔 있음, 같은 양식 재사용) 와 일치하면 Layer 1 hit → LLM 0회. 한 번 분석된 파일은 시스템 전체에 1회만 분석.
 
 ---
 
@@ -539,6 +595,16 @@ ngrok http 8765
 | 둘러보기 유형 필터 + 매칭과 독립 상태 | ✅ `_browseActiveTypes` Set, `#browse-type-filter` 칩 |
 | 프로필 페이지 3섹션 분리 + 사이드바 하단 진입 | ✅ 기본 정보·소재지/연락처·업종, 사이드바에 profile 탭 없음 — 계정 카드 클릭으로만 진입 |
 | 🧭 맞춤 플랜 (엔드 투 엔드: 추천 → 가중치 → narrative → 담기 → 가이드 → 타임라인 → 캘린더) | ✅ `planner.py` `compose_action_plan` + `generate_recommendation_narratives` + `generate_action_guide` (Step A/B/C 누적). PDF 분석 결과까지 결합 |
+| 📄 JPG/PNG/WEBP 자동 분석 (Gemini Vision) — 정부 공고 캡처 첨부도 7카테고리 추출 | ✅ Step 1 `analyze_image` — multimodal 직접, page=1 정규화 |
+| 📋 HWPX (신형 한컴) 자동 분석 — stdlib ZIP+XML 추출 | ✅ Step 2 `hwpx_extractor` + `analyze_text` — 외부 의존성 0 |
+| 🤖 공고 페이지 자동 fetch + 분석 백엔드 | ✅ Step 4 `auto_fetcher.fetch_and_analyze_announcement` — DB row 시스템 공유, magic 사전검증, idempotent, `/api/announcements/{id}/auto-fetch` |
+| 🧭 맞춤 플랜이 자동 fetch 분석까지 활용 + 백그라운드 트리거 | ✅ Step 5 `_maybe_trigger_auto_fetch_async` (Top N 백그라운드 thread) + `_load_analyses_for_announcement` 가 사용자 첨부 + auto fetch 합본 |
+| 📅 PDF 추출 일정 → 맞춤 플랜 타임라인 + 캘린더 통합 | ✅ Step 6 `_load_extracted_events_for_announcement` + 6 type 아이콘 매핑 + range/time 캘린더 push |
+| 🔀 사이드바 4탭 → 2탭 통합 (옵션 B) | ✅ Phase 1+2+3 — 「공고 둘러보기 (전체/자격 맞춤 토글) + 내 액션 플랜」. 공고 분석은 카드 펼침 인라인으로 흡수, 비교도 자동 fetch 합본 사용 |
+| 📝 HWP (구형) 자동 분석 — pyhwp의 hwp5txt CLI | ✅ A `hwp_extractor.py` — venv 환경 보강 (`_find_hwp5txt`), six 의존성 명시 |
+| 🎯 카드 펼침 시 lazy auto-fetch + 비교 모달 자동 trigger | ✅ 옵션 A + Fix 4 — 사용자 명시 행동 시점에 분석 시작 |
+| NTIS form-POST 첨부 다운로드 (스크래퍼 개선) | ❌ 현재는 단일 `download.do` URL 만 잡혀 HTML 응답 → "server returned HTML" 명확 에러로 차단됨 |
+| 진행중 공고 전체 일괄 사전 분석 (cron 배치) | ❌ 사용자 펼침 / 맞춤 플랜 Top N 트리거에만 의존. 1회 ₩2K 예상 비용으로 전체 커버리지 ↑ 가능 |
 
 ---
 

@@ -49,24 +49,26 @@ AWS 에서 `deploy` (또는 `cd ~/IDEA-RO && git pull && sudo systemctl restart 
 
 ## 핵심 아키텍처 결정 (절대 깨지 마세요)
 
-### 캐싱 5층 — 변경 시 비용/지연 영향 큼
+### 캐싱 6층 — 변경 시 비용/지연 영향 큼
 
 | Layer | 위치 | 키 | 무효화 |
 |---|---|---|---|
-| 1. 파일 hash | `planner/storage/analyses/{hash}.json` | PDF SHA256 16자 | `SCHEMA_VERSION` 증가 시 자동 |
-| 2. 텍스트 추출 | `planner/storage/extracts/{hash}.txt` | PDF hash | 수동 |
-| 3. derived (폴더 단위) | `planner/storage/derived/{key}.json` | 폴더ID + PDF hash 정렬 | 컨텐츠 해시 (자동) |
+| 1. 파일 hash (PDF/이미지/HWPX/HWP) | `planner/storage/analyses/{hash}.json` | 파일 바이트 SHA256 16자 | `SCHEMA_VERSION` 증가 시 자동 |
+| 2. 텍스트 추출 | `planner/storage/extracts/{hash}.txt` | 파일 hash | 수동 |
+| 3. derived (폴더 단위) | `planner/storage/derived/{key}.json` | 폴더ID + 파일 hash 정렬 | 컨텐츠 해시 (자동) |
 | 4. Gemini 명시 캐시 | Gemini 서버측 | 비교 세션 (announcement_ids + profile) | TTL 10분 자동 |
-| 5. **맞춤 플랜 derived** | `planner/storage/derived/plan_{narrative\|guide}_{user_id}_{hash}.json` | narrative: user + ann_ids + weights / guide: **sys_prompt sha + user + picked + today + PDF hashes** | guide 는 **시스템 프롬프트 수정 시 자동 invalidate** (sha 포함) + PDF 추가/삭제 시 자동 invalidate |
+| 5. **맞춤 플랜 derived** | `planner/storage/derived/plan_{narrative\|guide}_{user_id}_{hash}.json` | narrative: user + ann_ids + weights / guide: **sys_prompt sha + user + picked + today + PDF hashes** | guide 는 **시스템 프롬프트 수정 시 자동 invalidate** (sha 포함) + 자동/직접 첨부 변동 시 자동 invalidate |
+| 6. **자동 fetch 시도 결과 (Step 4)** | `announcement_auto_attachments` DB 테이블 | (announcement_id, source_url) UNIQUE | idempotent: status='done' 이면 skip (force=true 만 재시도) |
 
 → **새 LLM 호출 추가 시 항상 캐싱 가능 여부 검토**. 같은 입력 두 번 → 캐시 미스면 비용/지연 두 배.
 → **시스템 프롬프트 변경 후 캐시 invalidate 가 필요한 모든 함수는 키에 `hashlib.sha256(_SYSTEM_PROMPT).hexdigest()[:6]` 포함**. guide 가 모델 패턴.
+→ **Layer 5 와 6 의 시너지**: 새 공고에서 자동 fetch 한 파일 hash 가 다른 공고의 기존 PDF 와 일치 (같은 양식 재사용) → Layer 1 hit → LLM 0회. 사용자별 첨부와 시스템 자동 fetch 가 file_hash 로 dedup 되므로 같은 파일은 시스템 전체에 1회만 분석.
 
 ### 분석 스키마 버전 (`SCHEMA_VERSION`)
 
-[analyzer.py](planner/analyzer/analyzer.py) 의 `SCHEMA_VERSION` 상수. `analyze_pdf` 가 저장하는 JSON 구조 바뀌면 **반드시 +1**. 그러면 기존 캐시가 자동 무효화되어 재분석됨.
+[analyzer.py](planner/analyzer/analyzer.py) 의 `SCHEMA_VERSION` 상수. `analyze_pdf`/`analyze_image`/`analyze_text` 가 저장하는 JSON 구조 바뀌면 **반드시 +1**. 그러면 기존 캐시가 자동 무효화되어 재분석됨.
 
-현재 v2 — 7카테고리 (eligibility, warnings, schedule, support_amount, required_docs, evaluation, obligations).
+현재 v2 — 7카테고리 (eligibility, warnings, schedule, support_amount, required_docs, evaluation, obligations). 추가 메타: `source_type` (pdf/image/hwpx/hwp/text), `source_mime`, `page_count`, `section_extraction`.
 
 ### 사용자 데이터 격리 (Phase 2 + 3 + 6)
 
@@ -194,6 +196,63 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 3. 사용자 선택 → `POST /api/attachments/import-url` 반복 호출 (1건씩 download_to_bytes → analyze_pdf → DB)
 4. **Synap 뷰어 URL 직접 처리 X** — K-Startup `a.btn_down[href]` 의 다운로드 URL 사용 (`/afile/fileDownload/{key}`)
 
+### 파일 분석 dispatcher 패턴 (Step 1+2+A)
+
+[analyzer.py](planner/analyzer/analyzer.py) 의 `analyze_attachment(file_bytes, original_filename, mime_type)` 가 단일 진입점.
+
+| 포맷 | 분기 우선순위 | 분석 함수 | 추출 함수 |
+|---|---|---|---|
+| PDF | is_pdf (mt=application/pdf 또는 .pdf) | `analyze_pdf` | `extract_pdf_text` (PyMuPDF) |
+| JPG/PNG/WEBP | is_image (mt=image/* 또는 확장자) | `analyze_image` | Gemini Vision 직접 |
+| HWPX | is_hwpx (.hwpx 또는 hwp+xml MIME) | `analyze_text` | `extract_hwpx_text` (stdlib ZIP+XML) |
+| HWP | is_hwp (.hwp, HWPX 보다 후순위) | `analyze_text` | `extract_hwp_text` (pyhwp hwp5txt subprocess) |
+| 그 외 | LLMError | — | — |
+
+**새 포맷 추가 시**:
+1. `extract_{format}.py` 작성 → 평문 반환
+2. `analyzer.analyze_attachment` 의 dispatcher 에 분기 추가
+3. `auto_fetcher._detect_format` + `_check_format_magic` 에 분기 추가
+4. `auto_fetcher._AUTO_ANALYZE_EXTS` 에 확장자 추가
+5. `web.py` 의 `/api/upload` 의 `allowed_exts` 에 확장자 추가
+6. `dashboard.html` `renderAutoAnalysisBlock` 의 `FMT_ICON` / `FMT_LABEL` 매핑 추가
+
+### 자동 fetch 백엔드 (Step 4 + 옵션 A) — `auto_fetcher.py`
+
+**핵심 함수**:
+- `fetch_and_analyze_announcement(conn, ann_id, *, max_files=10, force=False)` — 공고 1건 동기 처리
+- `list_auto_attachments(conn, ann_id, *, include_analysis=True)` — 캐시 조회 (트리거 X)
+
+**트리거 위치 3곳**:
+1. `compose_action_plan` 끝 — Top N 백그라운드 threading.Thread (`_maybe_trigger_auto_fetch_async`)
+2. 카드 펼침 시 lazy — 프론트 `loadAutoAnalysisForCard` 가 GET 결과 비어있고 로그인 시 POST 호출
+3. 비교 모달 열림 시 — 프론트 `_refreshAttachCounts` 가 0건 공고에 백그라운드 trigger
+
+**Race safety**: `_upsert_auto_attachment` 가 `INSERT OR IGNORE` 후 SELECT — 동시 호출 시 UNIQUE 충돌 흡수.
+
+**Magic 사전 검증** (`_check_format_magic`): PDF (`%PDF`) / HWPX (`PK ZIP`) / HWP (`OLE2`) / 이미지 (JPEG/PNG/RIFF) 별로 다운로드 바이트가 실제 포맷과 일치하는지 LLM 호출 전 차단. NTIS 처럼 form-POST 필요한 사이트가 HTML 에러 페이지 반환 시 명확한 에러 메시지.
+
+**Idempotent 정책**: status='done' 인 첨부는 skip. force=true 만 재시도. 옛 'failed' 행 정리는 SQL `DELETE WHERE status='failed' AND file_format IS NULL` (옛 코드 시도분만 정리).
+
+### 자동 fetch 분석을 사용자 시점에 결합 (옵션 B-1: 비교 + B-2: 카드 일정)
+
+**비교 — `_collect_compare_items` 합본** (planner/web.py):
+```python
+# 사용자 직접 첨부 (folder.user_id 매칭) + 자동 fetch (status='done')
+# file_hash 로 dedup, 사용자 첨부 우선 보존
+```
+→ 사용자가 PDF 한 번도 안 올린 두 공고도 자동 fetch 분석으로 정밀 비교 가능.
+
+**카드 펼침 일정 — GET /api/announcements/{id}/auto-attachments 응답에 `extracted_events` 포함** (web.py + planner._load_extracted_events_for_announcement). 프론트 `renderAutoAnalysisBlock` 의 `aa-events-section` 이 6 type 아이콘 + range/time 표시 + 🗓️ Google · N 네이버 캘린더 일괄 등록 (기존 `_pushEventsToProvider` 재사용).
+
+### HWP 환경 — venv 보강 패턴 (`hwp_extractor.py`)
+
+`_find_hwp5txt()` 가 모듈 로드 시 1회 실행 → `_HWP5TXT_CMD` 캐시:
+1. `sys.executable` 디렉터리 (venv/bin/hwp5txt) — 1순위
+2. `shutil.which("hwp5txt")` — PATH 에서
+3. `[sys.executable, "-m", "hwp5.hwp5txt"]` — 모듈 fallback (보통 작동 안 함, 마지막 안전망)
+
+**AWS Ubuntu 24.04 venv 환경 함정**: systemd 의 PATH 에 venv/bin 자동 추가 안 됨. 위 1순위 (sys.executable 디렉터리) 가 핵심. pyhwp 0.1b15 가 `six` 를 install_requires 에 안 박아둠 — requirements.txt 에 별도 명시 (`six>=1.16`).
+
 ### 맞춤 플랜 (엔드 투 엔드) — Pipeline 구조와 누적 단계
 
 **위치**: [planner/planner.py](planner/planner.py) + [web.py](planner/web.py) `_handle_plan`/`_handle_plan_narrative`/`_handle_plan_guide` + [dashboard.html](public/dashboard.html) `loadPlan`/`renderPlan`/`_fetchPlanGuideAsync`.
@@ -313,6 +372,14 @@ announcement_id → attachment_folders.announcement_id == ann_id AND user_id == 
 | **맞춤 플랜 가이드의 발급처를 LLM 이 추정** | 시스템 프롬프트로 명시 매핑 강제: 주민등록=정부24 / 사업자등록·납세=홈택스 / 지방세=위택스 / 4대보험=4대사회보험정보연계센터 |
 | **PDF 분석 결과를 RAW JSON 으로 LLM 에 송신** | `format_analysis_summary` 로 잔축 (한 PDF 1~2K 토큰). 5개 공고 결합도 5~10K 로 통제 |
 | **맞춤 플랜 캘린더 등록을 새 API 로 구현** | 기존 `/api/calendar/{provider}/insert` + `_pushEventsToProvider(events, provider)` 헬퍼 그대로 재사용 — events 페이로드만 통합 타임라인에서 생성 |
+| **자동 fetch 를 사용자 행동 없이 cron 으로 일괄** | 사용자 명시 행동(맞춤 플랜 호출 / 카드 펼침 / 비교 모달) 시에만 trigger. 비용 통제 + 미사용 공고 분석 안 함. cron 도입은 별도 결정 |
+| **자동 fetch 결과를 사용자별로 저장** | `announcement_auto_attachments` 는 **시스템 공유 (user_id 없음)**. 같은 공고를 여러 사용자가 봐도 1회만 분석 → 캐시 공유. 사용자별 데이터는 `uploaded_attachments` 뿐 |
+| **HWP 분석을 직접 변환 (LibreOffice/한컴 자동화) 으로** | pyhwp `hwp5txt` CLI 로 텍스트만 추출 → `analyze_text`. 표/그림 손실 있지만 정부 공고 본문 95% 는 텍스트로 충분. 변환 방식은 운영 부담 큼 |
+| **HWPX 와 HWP 분기 순서 뒤바꾸기** | dispatcher 에서 `is_hwpx` 가 `is_hwp` 보다 **먼저** (`.hwpx` 도 `.hwp` 로 endswith 매칭되므로). `is_hwp` 정의에 `not endswith(".hwpx")` 가드 |
+| **자동 fetch 의 LLM 호출 전 magic 검증 생략** | `auto_fetcher._check_format_magic` 으로 다운로드 바이트가 PDF (`%PDF`) / HWPX (`PK ZIP`) / HWP (`OLE2`) / 이미지 매직과 일치하는지 사전 검증. NTIS 같은 form-POST 사이트가 HTML 에러 페이지 반환 시 LLM 호출 전 차단 |
+| **카드 인덱스로 _matchResults 직접 접근** | `visible` 인덱스와 `results` 인덱스 다를 수 있음. 카드 DOM 의 `data-ann-id` 어트리뷰트로 매핑하거나 `_matchResults.find(r => r.announcement.id === annId)` |
+| **공고 분석을 별도 탭으로 유지** | (옵션 B 통합) 카드 펼침의 자동 분석 블록에 흡수. 사이드바 2탭만 (둘러보기 + 내 액션 플랜). 옛 `pane-match` `pane-analyze` 는 DOM 호환용 placeholder 로 hollow out |
+| **비교 모달이 사용자 직접 첨부만 카운트** | `_collect_compare_items` 가 사용자 첨부 + `announcement_auto_attachments` (status=done) 합본. 프론트 `_refreshAttachCounts` 가 `_folderByAnnouncement` + `_autoCountByAnn` 합산 표시 ("분석 자료 N건 (자동 X · 직접 Y)") |
 
 ---
 
@@ -335,20 +402,31 @@ announcement_id → attachment_folders.announcement_id == ann_id AND user_id == 
 | HTTP 라우트 등록 | [web.py](planner/web.py) 의 `do_GET` / `do_POST` |
 | DB 스키마/마이그레이션 | [db.py](db.py) `SCHEMA` + `_MIGRATIONS` |
 | LLM 프롬프트 + 스키마 | [prompts.py](planner/analyzer/prompts.py) |
+| **파일 분석 dispatcher** | [analyzer.py](planner/analyzer/analyzer.py) `analyze_attachment` (확장자/MIME 기반 PDF/이미지/HWPX/HWP 분기) |
 | 분석 메인 (PDF→7카테고리) | [analyzer.py](planner/analyzer/analyzer.py) `analyze_pdf` |
+| **이미지 분석 (Gemini Vision)** | [analyzer.py](planner/analyzer/analyzer.py) `analyze_image` (Step 1) |
+| **텍스트 기반 분석 (HWPX/HWP 공용)** | [analyzer.py](planner/analyzer/analyzer.py) `analyze_text` + `_force_single_page` (Step 2+A) |
+| **HWPX 텍스트 추출 (신형)** | [hwpx_extractor.py](planner/analyzer/hwpx_extractor.py) `extract_hwpx_text` — stdlib ZIP+XML, 의존성 0 |
+| **HWP 텍스트 추출 (구형 HWP5)** | [hwp_extractor.py](planner/analyzer/hwp_extractor.py) `extract_hwp_text` + `_find_hwp5txt` (venv 환경 보강) |
+| **🤖 자동 fetch 백엔드 (Step 4)** | [auto_fetcher.py](planner/auto_fetcher.py) `fetch_and_analyze_announcement`, `list_auto_attachments`, `_check_format_magic` (PDF/HWPX/HWP/이미지 magic 검증) |
+| **자동 fetch 백그라운드 트리거 (Step 5)** | [planner.py](planner/planner.py) `_maybe_trigger_auto_fetch_async` — threading.Thread daemon=True, Top N 시도 안 된 공고만 |
 | 비교/채팅 LLM | [analyzer.py](planner/analyzer/analyzer.py) `compare_announcements`, `chat_compare` |
+| **비교 — 자동 fetch + 직접 첨부 합본** | [web.py](planner/web.py) `_collect_compare_items` — sources UNION + file_hash dedup |
 | OAuth 3종 | [auth.py](planner/auth.py) |
 | 카카오/Google/Naver 캘린더 호출 | [web.py](planner/web.py) `_handle_{provider}_calendar_insert` |
 | 사용자별 보유 서류 | [web.py](planner/web.py) `_handle_my_docs_list`/`_save` |
 | 매칭 로직 | [matcher.py](planner/matcher.py) `compute_profile_fit`, `match_announcement` |
 | **공고 유형 분류 (6묶음)** | [matcher.py](planner/matcher.py) `classify_announcement_type` + `ANNOUNCEMENT_TYPE_INFO` |
-| **🧭 맞춤 플랜 (엔드 투 엔드)** | [planner.py](planner/planner.py) `compose_action_plan`, `generate_recommendation_narratives`, `generate_action_guide` |
+| **🎯 내 액션 플랜 (엔드 투 엔드)** | [planner.py](planner/planner.py) `compose_action_plan`, `generate_recommendation_narratives`, `generate_action_guide` |
 | **맞춤 플랜 — 지원금 추출 / 노력 추정** | [planner.py](planner/planner.py) `_extract_amount_won` (regex 4단계), `_estimate_effort` (유형 base + 서류 수) |
-| **맞춤 플랜 — PDF 분석 결합 (Step C)** | [planner.py](planner/planner.py) `_load_analyses_for_announcement` (DB join) + `_summarize_analyses` (format_analysis_summary 재사용) |
-| **맞춤 플랜 — 프론트** | [dashboard.html](public/dashboard.html) `loadPlan`, `_renderPlanCard`, `_buildPlanTimeline`, `_fetchPlanNarrativesAsync`, `_fetchPlanGuideAsync`, `togglePlanPick` |
-| **공고 URL → 첨부 PDF 스크랩** | [attach_fetcher.py](planner/attach_fetcher.py) `scan_attachments_from_url`, `download_to_bytes` |
+| **맞춤 플랜 — 분석 자료 결합 (Step C, 사용자+자동 합본)** | [planner.py](planner/planner.py) `_load_analyses_for_announcement` (uploaded_attachments + announcement_auto_attachments dedup) + `_summarize_analyses` + `_load_extracted_events_for_announcement` (Step 6 일정 추출) |
+| **맞춤 플랜 — 프론트** | [dashboard.html](public/dashboard.html) `loadPlan`, `_renderPlanCard`, `_buildPlanTimeline` (apply/issue/extracted 3종), `_fetchPlanGuideAsync`, `togglePlanPick`, `_planTlPush` |
+| 공고 URL → 첨부 스크랩 (수동) | [attach_fetcher.py](planner/attach_fetcher.py) `scan_attachments_from_url`, `download_to_bytes` (K-Startup/NRF/NTIS) |
 | 서류 마스터 (30개) | [document_master.py](planner/document_master.py) |
-| 프론트 (6탭 SPA) | [public/dashboard.html](public/dashboard.html) |
+| 프론트 (2탭 SPA) | [public/dashboard.html](public/dashboard.html) |
+| **둘러보기 모드 토글 (옵션 B Phase 2)** | [dashboard.html](public/dashboard.html) `setBrowseMode`, `_browseMode`, `_isMatchViewActive`, `BROWSE_MODE_HINTS` |
+| **카드 펼침 자동 분석 (옵션 B Phase 3 + A)** | [dashboard.html](public/dashboard.html) `loadAutoAnalysisForCard`, `_autoStartAnalysis`, `renderAutoAnalysisBlock`, `_addExtractedEventsToCalendar`, `triggerAutoFetchForAnnouncement` |
+| **비교 모달 합본 카운트 (Fix 1+4)** | [dashboard.html](public/dashboard.html) `_refreshAttachCounts`, `_renderAttachCounts`, `_autoCountByAnn`, `openAttachPdfByAnnId`, `_openAttachPdfForAnnouncement` |
 | **캘린더 렌더 (주 단위 bar)** | [public/dashboard.html](public/dashboard.html) `renderCalendar` + `CAL_EVENT_CATEGORIES` |
 | **비교 결과 마크다운 렌더** | [public/dashboard.html](public/dashboard.html) `_renderCompareMarkdown`, `_renderInlineMd` |
 | **사이드바 워크스페이스 스위처** | [public/dashboard.html](public/dashboard.html) `setupWorkspaceSwitcher`, `setWorkspace`, `WORKSPACE_NAMES` |
@@ -389,6 +467,33 @@ sudo systemctl status idea-ro --no-pager
 
 # 로그
 sudo journalctl -u idea-ro -n 50 --no-pager
+
+# requirements.txt 변경 시 venv 의 pip 으로 추가 설치 (pyhwp/six 등)
+~/IDEA-RO/venv/bin/pip install -r requirements.txt
+sudo systemctl restart idea-ro
+
+# HWP 환경 검증
+~/IDEA-RO/venv/bin/hwp5txt --version
+~/IDEA-RO/venv/bin/python -c "from planner.analyzer.hwp_extractor import _HWP5TXT_CMD; print(_HWP5TXT_CMD)"
+# → /home/ubuntu/IDEA-RO/venv/bin/hwp5txt 가 나와야 1순위 잡힘. 모듈 fallback (list) 으로 잡히면 실제 호출 시 실패.
+
+# 자동 fetch 실패 진단 (어떤 케이스가 어떤 이유로 실패하는지)
+~/IDEA-RO/venv/bin/python -c "
+import sqlite3
+c = sqlite3.connect('/home/ubuntu/IDEA-RO/announcements.db')
+c.row_factory = sqlite3.Row
+for r in c.execute(\"SELECT original_filename, error_message FROM announcement_auto_attachments WHERE status='failed' ORDER BY id DESC LIMIT 10\"):
+    print('---'); print(r['original_filename'][:60]); print((r['error_message'] or '')[:300])
+"
+
+# 옛 failed 행 정리 (코드 개선 후 재시도)
+~/IDEA-RO/venv/bin/python -c "
+import sqlite3
+c = sqlite3.connect('/home/ubuntu/IDEA-RO/announcements.db')
+n = c.execute(\"DELETE FROM announcement_auto_attachments WHERE status='failed' AND file_format IS NULL\").rowcount
+c.commit(); c.close()
+print(f'{n} rows deleted')
+"
 ```
 
 ### 주소
