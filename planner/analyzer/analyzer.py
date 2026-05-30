@@ -158,7 +158,7 @@ def analyze_pdf(
             system=EXTRACTION_SYSTEM_PROMPT,
             user=user_prompt,
             response_schema=EXTRACTION_SCHEMA,
-            max_tokens=5000,
+            max_tokens=12000,
         )
     except LLMError as e:
         raise
@@ -284,7 +284,7 @@ def analyze_image(
             image_bytes=image_bytes,
             mime_type=mime_type,
             response_schema=EXTRACTION_SCHEMA,
-            max_tokens=5000,
+            max_tokens=12000,
         )
     except LLMError:
         raise
@@ -377,7 +377,7 @@ def analyze_text(
             system=EXTRACTION_SYSTEM_PROMPT,
             user=user_prompt,
             response_schema=EXTRACTION_SCHEMA,
-            max_tokens=5000,
+            max_tokens=12000,
         )
     except LLMError:
         raise

@@ -6532,26 +6532,29 @@ let _compareChatHistory = [];   // [{role, text}]
 let _compareAnnIds = [];        // 현재 비교 세션의 announcement_ids
 
 function _buildPrecisionSectionHtml(picks) {
-  // 각 공고가 첨부 PDF 를 가졌는지 _folderByAnnouncement 기준으로 표시
+  // 자동 fetch + 직접 첨부 합본 카운트 표시 (Fix 1).
+  // 초기에는 "확인 중..." 으로 두고 _refreshAttachCounts 가 자동 fetch 도 합쳐서 채움.
   const rows = picks.map((p, i) => {
     const a = p.announcement;
     const label = String.fromCharCode(65 + i);
-    // 폴더 캐시에 있는지 + 우리는 첨부 카운트를 API 호출 없이 알 방법이 없음.
-    // 비교 모달 열 때 _folderByAnnouncement 가 채워져 있으면 사용, 없으면 "확인 중" 으로 두고 _refreshAttachCounts 가 갱신.
     const folder = _folderByAnnouncement.get(a.id);
-    const cnt = folder?.count ?? null;
-    const ready = cnt != null && cnt > 0;
-    const statusHtml = ready
-      ? `<span class="cmp-attach-status ready">PDF ${cnt}개 연결</span>`
-      : (cnt === 0
-          ? `<span class="cmp-attach-status">미첨부</span>`
-          : `<span class="cmp-attach-status">확인 중...</span>`);
+    const userCnt = folder?.count ?? 0;
+    // 자동 카운트는 _autoCountByAnn 캐시에서 (있으면), 없으면 확인 중
+    const autoCnt = (window._autoCountByAnn || {})[a.id];
+    const hasAuto = autoCnt != null;
+    const total = userCnt + (autoCnt || 0);
+    const ready = total > 0;
+    const statusHtml = !hasAuto
+      ? `<span class="cmp-attach-status">확인 중...</span>`
+      : (ready
+          ? `<span class="cmp-attach-status ready">분석 자료 ${total}건 (자동 ${autoCnt} · 직접 ${userCnt})</span>`
+          : `<span class="cmp-attach-status">자료 없음</span>`);
     return `
       <div class="cmp-attach-row ${ready ? 'ready' : ''}" data-ann-id="${a.id}">
         <span class="cmp-attach-label">${label}</span>
         <span class="cmp-attach-title" title="${escapeHtml(a.title)}">${escapeHtml(a.title)}</span>
         ${statusHtml}
-        <button class="cmp-attach-btn" onclick="_attachPdfForComparison(${a.id})">📎 PDF</button>
+        <button class="cmp-attach-btn" onclick="_attachPdfForComparison(${a.id})" title="추가 자료 직접 첨부">+ 내 자료</button>
       </div>
     `;
   }).join("");
@@ -6560,46 +6563,107 @@ function _buildPrecisionSectionHtml(picks) {
   return `
     <div class="cmp-precision">
       <div class="cmp-precision-h">
-        🤖 정밀 비교 <span class="cmp-beta">BETA · PDF + LLM</span>
+        🤖 정밀 비교 <span class="cmp-beta">BETA · 자동 분석 + LLM</span>
       </div>
       <div class="cmp-precision-sub">
-        각 공고의 첨부 PDF 를 LLM 이 읽고 측면별 차이를 정리합니다. PDF 가 없으면 매트릭스만으로 충분합니다.
+        각 공고의 <b>자동 분석된 자료</b>(PDF / HWP / HWPX / 이미지) 를 LLM 이 읽고 측면별 차이를 정리합니다.
+        자료가 부족하면 + 내 자료 로 직접 첨부할 수 있어요.
       </div>
       <div class="cmp-attach-grid" id="cmp-attach-grid">
         ${rows}
       </div>
       <button class="cmp-start-btn" id="cmp-start-btn" onclick="_startPrecisionCompare()">
-        정밀 비교 시작 — PDF 가 연결된 공고만 사용
+        🚀 정밀 비교 시작
       </button>
       <div id="cmp-llm-result"></div>
     </div>
   `;
 }
 
+// Fix 1: 비교 모달 첨부 카운트 = 직접 첨부 + 자동 fetch done 합본
+// 자동 카운트 캐시 (announcementId -> done 개수)
+window._autoCountByAnn = window._autoCountByAnn || {};
+
 async function _refreshAttachCounts() {
-  // 매번 폴더 목록을 새로 가져와 _folderByAnnouncement 채우기
+  // 1) 사용자 직접 첨부 (folders) — 한 번에 받기
   try {
     const list = await fetch("/api/folders").then(r => r.ok ? r.json() : { folders: [] });
     _folderByAnnouncement.clear();
     (list.folders || []).forEach(f => {
       if (f.announcement_id != null) _folderByAnnouncement.set(f.announcement_id, f);
     });
-    // 모달이 열려있고 첨부 그리드가 있으면 다시 그리기
-    const grid = document.getElementById("cmp-attach-grid");
-    if (!grid) return;
-    grid.querySelectorAll(".cmp-attach-row").forEach(row => {
-      const annId = parseInt(row.dataset.annId, 10);
-      const folder = _folderByAnnouncement.get(annId);
-      const cnt = folder?.count ?? 0;
-      const ready = cnt > 0;
-      row.classList.toggle("ready", ready);
-      const status = row.querySelector(".cmp-attach-status");
-      if (status) {
-        status.className = "cmp-attach-status" + (ready ? " ready" : "");
-        status.textContent = ready ? `PDF ${cnt}개 연결` : "미첨부";
-      }
-    });
   } catch (_) { /* 무시 */ }
+
+  // 2) 자동 fetch 카운트 — 각 picked ann_id 에 대해 GET (병렬). 비로그인이어도 조회 OK.
+  const annIds = _compareAnnIds || [];
+  const autoPromises = annIds.map(async (annId) => {
+    try {
+      const res = await fetch(`/api/announcements/${annId}/auto-attachments`);
+      if (!res.ok) return [annId, 0];
+      const data = await res.json();
+      const doneCount = (data.attachments || []).filter(x => x.status === "done").length;
+      return [annId, doneCount];
+    } catch (_) {
+      return [annId, 0];
+    }
+  });
+  const results = await Promise.all(autoPromises);
+  for (const [annId, cnt] of results) {
+    window._autoCountByAnn[annId] = cnt;
+  }
+
+  // 3) Fix 4: 자료 0건인 공고는 자동 fetch trigger (사용자 명시 행동 = 비교 의도)
+  if (CURRENT_USER) {
+    for (const [annId, cnt] of results) {
+      const userCnt = _folderByAnnouncement.get(annId)?.count ?? 0;
+      if (cnt === 0 && userCnt === 0) {
+        // 백그라운드 trigger (await 안 함, 응답 오면 다시 카운트 갱신)
+        fetch(`/api/announcements/${annId}/auto-fetch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ max_files: 10 }),
+        }).then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (data && Array.isArray(data.attachments)) {
+              window._autoCountByAnn[annId] = data.attachments.filter(x => x.status === "done").length;
+              _renderAttachCounts();
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }
+
+  // 4) 화면 갱신
+  _renderAttachCounts();
+}
+
+function _renderAttachCounts() {
+  const grid = document.getElementById("cmp-attach-grid");
+  if (!grid) return;
+  grid.querySelectorAll(".cmp-attach-row").forEach(row => {
+    const annId = parseInt(row.dataset.annId, 10);
+    const userCnt = _folderByAnnouncement.get(annId)?.count ?? 0;
+    const autoCnt = (window._autoCountByAnn || {})[annId];
+    const hasAuto = autoCnt != null;
+    const total = userCnt + (autoCnt || 0);
+    const ready = total > 0;
+    row.classList.toggle("ready", ready);
+    const status = row.querySelector(".cmp-attach-status");
+    if (status) {
+      if (!hasAuto) {
+        status.className = "cmp-attach-status";
+        status.textContent = "확인 중...";
+      } else if (ready) {
+        status.className = "cmp-attach-status ready";
+        status.textContent = `분석 자료 ${total}건 (자동 ${autoCnt} · 직접 ${userCnt})`;
+      } else {
+        status.className = "cmp-attach-status";
+        status.textContent = "자료 없음";
+      }
+    }
+  });
 }
 
 async function _attachPdfForComparison(annId) {
@@ -6780,7 +6844,7 @@ function _reanalyzeCompare() {
   if (startBtn) {
     startBtn.style.display = "";
     startBtn.disabled = false;
-    startBtn.textContent = "정밀 비교 시작 — PDF 가 연결된 공고만 사용";
+    startBtn.textContent = "🚀 정밀 비교 시작";
   }
   _startPrecisionCompare();
 }
