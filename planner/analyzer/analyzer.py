@@ -761,10 +761,12 @@ def _format_announcements_block(items: list[dict]) -> str:
     }, ...]
     """
     blocks: list[str] = []
+    is_single = len(items) == 1
     for it in items:
         label = it.get("label") or "?"
         title = it.get("title") or "(제목 없음)"
-        head = [f"=== [공고 {label}] {title}"]
+        # 단일 공고일 땐 라벨 ("A", "B") 안 사용 → LLM 이 "공고 A" 같은 라벨 인용 안 함
+        head = [f"=== {title}" if is_single else f"=== [공고 {label}] {title}"]
         meta_bits = []
         if it.get("source"): meta_bits.append(f"출처: {it['source']}")
         if it.get("department"): meta_bits.append(f"부서: {it['department']}")
@@ -781,7 +783,7 @@ def _format_announcements_block(items: list[dict]) -> str:
                 head.append((text or "").strip())
         else:
             head.append("  (첨부 PDF 없음)")
-        head.append("=== [공고 " + label + "] 끝 ===")
+        head.append("=== 끝 ===" if is_single else "=== [공고 " + label + "] 끝 ===")
         blocks.append("\n".join(head))
     return "\n\n".join(blocks)
 
@@ -844,8 +846,9 @@ def _get_or_create_compare_cache(
 
 
 def _build_cacheable_prefix(items: list[dict], profile: Optional[dict]) -> str:
-    """캐시에 저장할 정적 컨텍스트 (프로필 + 공고들)."""
-    return _format_profile_block(profile) + "[비교할 공고 목록]\n" + _format_announcements_block(items)
+    """캐시에 저장할 정적 컨텍스트 (프로필 + 공고). 단일/복수 톤 분리."""
+    header = "[공고 정보]\n" if len(items) == 1 else "[비교할 공고 목록]\n"
+    return _format_profile_block(profile) + header + _format_announcements_block(items)
 
 
 def compare_announcements(
@@ -913,8 +916,8 @@ def chat_compare(
     started = time.time()
     if not question or not question.strip():
         raise LLMError("질문이 비어있습니다")
-    if len(items) < 2:
-        raise LLMError("비교는 공고 2개 이상이 필요합니다")
+    if len(items) < 1:
+        raise LLMError("질문 대상 공고가 없습니다")
 
     if provider is None:
         provider = get_llm_provider()
@@ -935,11 +938,22 @@ def chat_compare(
     cacheable_prefix = _build_cacheable_prefix(items, profile)
     cache_name = _get_or_create_compare_cache(provider, items, profile, cacheable_prefix)
 
-    # 변동분 (history + 새 질문)
+    # 변동분 (history + 새 질문) — 단일 공고일 땐 비교 톤 대신 단일 분석 톤
+    if len(items) == 1:
+        instruction_tail = (
+            "위 공고 문서를 근거로 사용자의 질문에 사실 기반으로 답해주세요. "
+            "비교 대상이 없으므로 \"공고 A는...\" / \"1개 공고 비교\" 같은 라벨이나 헤더는 절대 쓰지 마세요. "
+            "이 공고만을 직접 가리켜 (\"이 공고는...\" / \"본 사업은...\") 자연스러운 문장으로 답하세요. "
+            "헤더/제목 없이 본문만 작성하고, 근거가 부족하면 \"공고문에 명시되지 않음\" 으로 솔직히 표시하세요."
+        )
+    else:
+        instruction_tail = (
+            "위 공고 문서들을 근거로, 사용자가 자기 상황에 맞게 판단할 수 있도록 도와주세요. "
+            "\"무엇이 베스트\" 라고 단정 짓지 말고, 사용자의 우선순위에 비추어 어느 공고가 어떤 점에서 부합하는지 사실 기반으로 정리해주세요."
+        )
     variable_suffix = (
         f"{history_block}\n[현재 질문]\n{question.strip()}\n\n"
-        "위 공고 문서들을 근거로, 사용자가 자기 상황에 맞게 판단할 수 있도록 도와주세요. "
-        "\"무엇이 베스트\" 라고 단정 짓지 말고, 사용자의 우선순위에 비추어 어느 공고가 어떤 점에서 부합하는지 사실 기반으로 정리해주세요."
+        + instruction_tail
     )
 
     if cache_name:

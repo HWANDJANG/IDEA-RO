@@ -931,6 +931,87 @@
     font-size: 13px; line-height: 1.6;
   }
   .ann-panel-placeholder .ph-icon { font-size: 32px; opacity: 0.5; margin-bottom: 8px; }
+
+  /* ── 채팅 탭 — 메시지 리스트 + 입력창 (Step 3) ── */
+  .ann-chat-wrap {
+    display: flex; flex-direction: column; height: 100%;
+  }
+  .ann-chat-msgs {
+    flex: 1; min-height: 0; overflow-y: auto;
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .ann-chat-empty {
+    color: var(--muted); font-size: 13px; text-align: center;
+    padding: 40px 12px; line-height: 1.6;
+  }
+  .ann-chat-empty .ph-icon { font-size: 28px; opacity: 0.5; margin-bottom: 8px; display:block; }
+  .ann-chat-empty .ann-chat-suggest {
+    margin-top: 16px; display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+  }
+  .ann-chat-suggest-btn {
+    padding: 9px 12px; border-radius: 8px;
+    background: white; border: 1px solid var(--border-strong);
+    font-size: 12.5px; color: var(--text); text-align: left;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .ann-chat-suggest-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+  .ann-chat-msg {
+    display: flex; gap: 6px; max-width: 92%;
+    animation: chatMsgIn 0.18s ease both;
+  }
+  @keyframes chatMsgIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .ann-chat-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .ann-chat-msg.assistant { align-self: flex-start; }
+  .ann-chat-bubble {
+    padding: 9px 13px; border-radius: 14px;
+    font-size: 13.5px; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .ann-chat-msg.user .ann-chat-bubble {
+    background: var(--accent); color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .ann-chat-msg.assistant .ann-chat-bubble {
+    background: var(--bg-subtle); color: var(--text);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+  .ann-chat-msg.assistant.loading .ann-chat-bubble {
+    color: var(--muted); font-style: italic;
+  }
+  .ann-chat-msg.error .ann-chat-bubble {
+    background: #FCE6E2; border-color: #F3B7AC; color: #802410;
+  }
+
+  .ann-chat-input-row {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    background: white;
+    padding: 10px 12px;
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  .ann-chat-input {
+    flex: 1; min-height: 38px; max-height: 120px;
+    padding: 9px 12px; border-radius: 10px;
+    background: var(--bg-subtle); border: 1px solid var(--border-strong);
+    font-family: inherit; font-size: 13.5px; line-height: 1.45; color: var(--text);
+    resize: none; outline: none;
+    transition: border-color 0.12s;
+  }
+  .ann-chat-input:focus { border-color: var(--accent); background: white; }
+  .ann-chat-send {
+    flex-shrink: 0; padding: 8px 14px; border-radius: 10px;
+    background: var(--accent); color: white; border: none;
+    font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+    transition: background 0.12s, opacity 0.12s;
+  }
+  .ann-chat-send:hover:not(:disabled) { background: #BF4715; }
+  .ann-chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
   .ev-section { display: flex; flex-direction: column; gap: 6px; }
   .ev-section-h {
     font-size: 11px; font-weight: 700; color: var(--muted);
@@ -9210,11 +9291,173 @@ function switchAnnPanelTab(name) {
   const annId = _annPanelCurrentId;
   if (annId == null) return;
   const key = `${annId}:${name}`;
-  if (_annPanelLoaded.get(key)) return;
   if (name === "guide") {
+    if (_annPanelLoaded.get(key)) return;
     _loadAnnPanelGuide(annId).then(() => _annPanelLoaded.set(key, true));
+  } else if (name === "chat") {
+    // 채팅은 매번 mount (상태 유지 위해 _annPanelChats Map 사용)
+    _mountAnnPanelChat(annId);
+    // 입력창 포커스
+    setTimeout(() => {
+      const inp = document.getElementById("ann-chat-input");
+      if (inp) inp.focus();
+    }, 100);
   }
-  // chat: Step 3, analysis: Step 4 에서 추가
+  // analysis: Step 4 에서 추가
+}
+
+// 공고별 채팅 히스토리 (페이지 새로고침 전까지 유지). 키 = annId, 값 = [{role, text}]
+const _annPanelChats = new Map();
+// 채팅 중 (전송 대기) 여부 — 동일 공고에 동시 send 방지
+const _annPanelChatBusy = new Set();
+
+// 첫 질문 추천 — 사용자가 뭘 물어볼지 막막할 때
+const ANN_CHAT_SUGGESTIONS = [
+  "이 공고에 지원하려면 어떤 서류가 필요해?",
+  "사업계획서는 어떻게 써야 좋아?",
+  "내 자격으로 이 공고가 적합한지 알려줘",
+  "주요 평가 기준이 뭐야?",
+];
+
+function _mountAnnPanelChat(annId) {
+  const pane = document.getElementById("ann-pane-chat");
+  if (!pane) return;
+  const history = _annPanelChats.get(annId) || [];
+  const msgsHtml = history.length
+    ? history.map(m => _annChatMsgHtml(m.role, m.text)).join("")
+    : `
+      <div class="ann-chat-empty">
+        <span class="ph-icon">💬</span>
+        <div>이 공고에 대해 자유롭게 질문해 보세요.<br>첨부 PDF 가 있으면 자동으로 컨텍스트에 포함됩니다.</div>
+        <div class="ann-chat-suggest">
+          ${ANN_CHAT_SUGGESTIONS.map(q =>
+            `<button class="ann-chat-suggest-btn" onclick="_annChatPrefill(${JSON.stringify(q).replace(/"/g, '&quot;')})">${escapeHtml(q)}</button>`
+          ).join("")}
+        </div>
+      </div>`;
+  pane.innerHTML = `
+    <div class="ann-chat-wrap">
+      <div class="ann-chat-msgs" id="ann-chat-msgs">${msgsHtml}</div>
+      <div class="ann-chat-input-row">
+        <textarea class="ann-chat-input" id="ann-chat-input"
+          placeholder="질문을 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)"
+          rows="1" oninput="_annChatAutoresize(this)"
+          onkeydown="_annChatKeydown(event)"></textarea>
+        <button class="ann-chat-send" id="ann-chat-send" onclick="_annChatSend()">전송</button>
+      </div>
+    </div>`;
+  // 스크롤을 맨 아래로
+  const msgsEl = document.getElementById("ann-chat-msgs");
+  if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function _annChatMsgHtml(role, text, extraClass = "") {
+  const cls = role === "user" ? "user" : "assistant";
+  return `<div class="ann-chat-msg ${cls} ${extraClass}">
+    <div class="ann-chat-bubble">${escapeHtml(text || "")}</div>
+  </div>`;
+}
+
+function _annChatPrefill(q) {
+  const inp = document.getElementById("ann-chat-input");
+  if (!inp) return;
+  inp.value = q;
+  inp.focus();
+  _annChatAutoresize(inp);
+}
+
+function _annChatAutoresize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(120, el.scrollHeight) + "px";
+}
+
+function _annChatKeydown(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    _annChatSend();
+  }
+}
+
+async function _annChatSend() {
+  const annId = _annPanelCurrentId;
+  if (annId == null) return;
+  if (_annPanelChatBusy.has(annId)) return;
+  const inp = document.getElementById("ann-chat-input");
+  const sendBtn = document.getElementById("ann-chat-send");
+  if (!inp) return;
+  const question = (inp.value || "").trim();
+  if (!question) return;
+
+  const history = _annPanelChats.get(annId) || [];
+  history.push({ role: "user", text: question });
+  _annPanelChats.set(annId, history);
+
+  // UI 즉시 반영 — empty 상태 제거 후 메시지 append
+  const msgsEl = document.getElementById("ann-chat-msgs");
+  if (msgsEl) {
+    // 빈 상태였으면 wrap 통째 재렌더
+    if (msgsEl.querySelector(".ann-chat-empty")) {
+      msgsEl.innerHTML = "";
+    }
+    msgsEl.insertAdjacentHTML("beforeend", _annChatMsgHtml("user", question));
+    msgsEl.insertAdjacentHTML("beforeend",
+      `<div class="ann-chat-msg assistant loading" id="ann-chat-loading">
+         <div class="ann-chat-bubble">답변 생성 중... (5~10초)</div>
+       </div>`);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  inp.value = "";
+  _annChatAutoresize(inp);
+  inp.disabled = true;
+  if (sendBtn) sendBtn.disabled = true;
+  _annPanelChatBusy.add(annId);
+
+  try {
+    const res = await fetch(`/api/announcements/${annId}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, history: history.slice(0, -1) }),
+    });
+    const data = await res.json().catch(() => ({ error: "응답 파싱 실패" }));
+    document.getElementById("ann-chat-loading")?.remove();
+    if (!res.ok || data.error) {
+      const errMsg = data.error || `오류 (${res.status})`;
+      history.pop();   // 실패하면 사용자 메시지도 롤백 (재시도 가능)
+      _annPanelChats.set(annId, history);
+      // 사용자 메시지는 화면에서 유지하되, 에러 메시지를 assistant 로 표시
+      if (msgsEl) {
+        msgsEl.insertAdjacentHTML("beforeend",
+          `<div class="ann-chat-msg assistant error">
+             <div class="ann-chat-bubble">⚠️ ${escapeHtml(errMsg)}</div>
+           </div>`);
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+      }
+      return;
+    }
+    const answer = data.answer || "(빈 응답)";
+    history.push({ role: "assistant", text: answer });
+    _annPanelChats.set(annId, history);
+    if (msgsEl) {
+      msgsEl.insertAdjacentHTML("beforeend", _annChatMsgHtml("assistant", answer));
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+  } catch (e) {
+    document.getElementById("ann-chat-loading")?.remove();
+    history.pop();
+    _annPanelChats.set(annId, history);
+    if (msgsEl) {
+      msgsEl.insertAdjacentHTML("beforeend",
+        `<div class="ann-chat-msg assistant error">
+           <div class="ann-chat-bubble">⚠️ 네트워크 오류: ${escapeHtml(e.message || String(e))}</div>
+         </div>`);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+  } finally {
+    _annPanelChatBusy.delete(annId);
+    inp.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+    inp.focus();
+  }
 }
 
 async function _loadAnnPanelGuide(annId, force = false) {

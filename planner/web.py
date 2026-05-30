@@ -364,6 +364,11 @@ class Handler(BaseHTTPRequestHandler):
             ann_id_str = path[len("/api/announcements/"):-len("/guide")]
             self._handle_announcement_guide(ann_id_str)
             return
+        # 사이드 패널 — 단일 공고 채팅 (Step 3)
+        if path.startswith("/api/announcements/") and path.endswith("/chat"):
+            ann_id_str = path[len("/api/announcements/"):-len("/chat")]
+            self._handle_announcement_chat(ann_id_str)
+            return
         if path == "/api/upload":
             self._handle_upload()
             return
@@ -720,6 +725,64 @@ class Handler(BaseHTTPRequestHandler):
             return
         if "error" in result:
             self._send_json(result, status=404)
+            return
+        self._send_json(result)
+
+    def _handle_announcement_chat(self, ann_id_str: str) -> None:
+        """단일 공고에 대한 자유 질문 — 사이드 패널의 채팅 탭.
+
+        POST /api/announcements/{ann_id}/chat
+        Body: { "question": str, "history": [{role, text}, ...]? }
+        Response: { "answer": str, "elapsed_seconds": float, "cache_hit": bool }
+
+        첨부 PDF 가 있으면 분석 텍스트와 함께 컨텍스트 구성. 없으면 메타만으로 답변.
+        """
+        from planner.analyzer.analyzer import chat_compare
+        from planner.analyzer.llm.base import LLMError
+
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            ann_id = int(ann_id_str)
+        except ValueError:
+            self._send_json({"error": "invalid announcement id"}, status=400)
+            return
+
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            self._send_json({"error": f"invalid JSON: {e}"}, status=400)
+            return
+
+        question = (data.get("question") or "").strip()
+        if not question:
+            self._send_json({"error": "question 필수"}, status=400)
+            return
+        if len(question) > 2000:
+            self._send_json({"error": "question 너무 김 (max 2000)"}, status=400)
+            return
+        history = data.get("history") or []
+        if not isinstance(history, list):
+            history = []
+
+        # 단일 공고 items 빌드 — 비교용 헬퍼 재사용 (첨부 있으면 분석 텍스트 포함)
+        items = self._collect_compare_items([ann_id], user_id)
+        if not items:
+            self._send_json({"error": "공고를 찾지 못했습니다"}, status=404)
+            return
+        # 단일 공고는 첨부 없어도 OK — 메타만으로 LLM 이 답변 시도
+
+        profile = self._llm_safe_profile()
+        try:
+            result = chat_compare(items, question, history, profile=profile)
+        except LLMError as e:
+            self._send_json({"error": f"LLM 호출 실패: {e}"}, status=502)
+            return
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"채팅 실패: {e}"}, status=500)
             return
         self._send_json(result)
 
