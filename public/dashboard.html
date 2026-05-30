@@ -5973,7 +5973,12 @@ async function _autoStartAnalysis(annId, mount, idx) {
   }
 }
 
-function renderAutoAnalysisBlock(data, annId) {
+function renderAutoAnalysisBlock(data, annId, options) {
+  options = options || {};
+  // 사이드 패널 내부에서 호출 시 "💬 가이드/질문" 버튼은 중복이라 숨김
+  const guideBtn = options.hideGuideBtn
+    ? ""
+    : `<button class="aa-attach-btn" onclick="openAnnPanel(${annId}, 'guide')" title="이 공고만의 가이드 + 질문">💬 가이드/질문</button>`;
   const attachments = data.attachments || [];
   if (!attachments.length) {
     return `
@@ -5983,7 +5988,7 @@ function renderAutoAnalysisBlock(data, annId) {
         <div class="aa-block-foot" style="border:none; padding-top:0;">
           <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId})">🚀 지금 분석 시작</button>
           <button class="aa-attach-btn" onclick="openAttachPdfByAnnId(${annId})">+ 내 자료 추가</button>
-          <button class="aa-attach-btn" onclick="openAnnPanel(${annId}, 'guide')" title="이 공고만의 가이드 + 질문">💬 가이드/질문</button>
+          ${guideBtn}
         </div>
       </div>`;
   }
@@ -6130,7 +6135,7 @@ function renderAutoAnalysisBlock(data, annId) {
       <div class="aa-block-foot">
         <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId}, true)" title="다시 분석 (캐시 무시)">🔄 다시 분석</button>
         <button class="aa-attach-btn" onclick="openAttachPdfByAnnId(${annId})" title="공고 페이지에서 자동 수집되지 않은 자료 (사업계획서 초안 등) 를 추가">+ 내 자료 추가</button>
-        <button class="aa-attach-btn" onclick="openAnnPanel(${annId}, 'guide')" title="이 공고만의 가이드 + 질문">💬 가이드/질문</button>
+        ${guideBtn}
         <span class="aa-block-hint">자동 수집이 안 됐거나 추가 자료가 있으면 직접 첨부할 수 있어요.</span>
       </div>
     </div>`;
@@ -9302,8 +9307,10 @@ function switchAnnPanelTab(name) {
       const inp = document.getElementById("ann-chat-input");
       if (inp) inp.focus();
     }, 100);
+  } else if (name === "analysis") {
+    if (_annPanelLoaded.get(key)) return;
+    _loadAnnPanelAnalysis(annId).then(() => _annPanelLoaded.set(key, true));
   }
-  // analysis: Step 4 에서 추가
 }
 
 // 공고별 채팅 히스토리 (페이지 새로고침 전까지 유지). 키 = annId, 값 = [{role, text}]
@@ -9458,6 +9465,61 @@ async function _annChatSend() {
     if (sendBtn) sendBtn.disabled = false;
     inp.focus();
   }
+}
+
+async function _loadAnnPanelAnalysis(annId) {
+  const pane = document.getElementById("ann-pane-analysis");
+  if (!pane) return;
+  pane.innerHTML = `
+    <div class="ann-panel-placeholder">
+      <div class="ph-icon">📊</div>
+      <div>분석 자료를 불러오는 중...</div>
+    </div>`;
+  try {
+    const res = await fetch(`/api/announcements/${annId}/auto-attachments`);
+    if (!res.ok) {
+      pane.innerHTML = `<div class="ann-panel-placeholder">
+        <div class="ph-icon">⚠️</div>
+        <div>분석 자료 로드 실패 (${res.status})</div></div>`;
+      return;
+    }
+    const data = await res.json();
+    // 비어있고 로그인된 상태면 자동 trigger (옵션 A 와 동일 패턴)
+    if ((!data.attachments || data.attachments.length === 0) && (typeof CURRENT_USER !== "undefined" && CURRENT_USER)) {
+      pane.innerHTML = `
+        <div class="ann-panel-placeholder">
+          <div class="ph-icon">🚀</div>
+          <div>아직 자동 분석 안 된 공고입니다.<br>지금 분석을 시작할까요? (10~30초)</div>
+          <div style="margin-top:14px;">
+            <button class="aa-trigger-btn" onclick="_triggerAndReloadAnnPanelAnalysis(${annId})">🚀 지금 분석 시작</button>
+          </div>
+        </div>`;
+      return;
+    }
+    pane.innerHTML = renderAutoAnalysisBlock(data, annId, { hideGuideBtn: true });
+  } catch (e) {
+    pane.innerHTML = `<div class="ann-panel-placeholder">
+      <div class="ph-icon">⚠️</div>
+      <div>네트워크 오류: ${escapeHtml(e.message || String(e))}</div></div>`;
+  }
+}
+
+async function _triggerAndReloadAnnPanelAnalysis(annId) {
+  const pane = document.getElementById("ann-pane-analysis");
+  if (!pane) return;
+  pane.innerHTML = `
+    <div class="ann-panel-placeholder">
+      <div class="ph-icon">⏳</div>
+      <div>공고 페이지에서 자료를 가져와 분석 중...<br><span style="opacity:0.6">10~30초 소요</span></div>
+    </div>`;
+  try {
+    await fetch(`/api/announcements/${annId}/auto-fetch`, { method: "POST" });
+  } catch (_) {}
+  // 끝나면 다시 GET 으로 결과 가져오기
+  // _annPanelLoaded 캐시 무효화해서 다음 클릭 시에도 새로 로드
+  _annPanelLoaded.delete(`${annId}:analysis`);
+  await _loadAnnPanelAnalysis(annId);
+  _annPanelLoaded.set(`${annId}:analysis`, true);
 }
 
 async function _loadAnnPanelGuide(annId, force = false) {
