@@ -854,6 +854,83 @@
     flex: 1; overflow-y: auto; padding: 18px 20px 24px;
     display: flex; flex-direction: column; gap: 18px;
   }
+
+  /* ─── 공고 디테일 사이드 패널 (가이드 / 질문 / 분석 3탭) — Step 1 골격 ─── */
+  .ann-panel-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0); pointer-events: none;
+    transition: background 0.18s ease;
+    z-index: 90;
+  }
+  .ann-panel-backdrop.show { background: rgba(26,23,20,0.35); pointer-events: auto; }
+  .ann-panel {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 480px; max-width: 100vw;
+    background: white; box-shadow: -16px 0 40px rgba(0,0,0,0.12);
+    transform: translateX(100%); transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+    z-index: 95; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .ann-panel.show { transform: translateX(0); }
+  @media (max-width: 560px) { .ann-panel { width: 100vw; } }
+
+  .ann-panel-head {
+    padding: 16px 18px 12px; border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+  }
+  .ann-panel-head-top {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  }
+  .ann-panel-title {
+    font-size: 15px; font-weight: 700; color: var(--text);
+    line-height: 1.4; margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ann-panel-source {
+    font-size: 11.5px; color: var(--muted); margin-top: 4px;
+  }
+  .ann-panel-close {
+    background: transparent; border: none; font-size: 22px; color: var(--muted);
+    cursor: pointer; padding: 2px 8px; line-height: 1; border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .ann-panel-close:hover { color: var(--text); background: white; }
+
+  /* 탭 바 */
+  .ann-panel-tabs {
+    display: flex; gap: 2px; padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+  }
+  .ann-panel-tab {
+    padding: 10px 14px; background: transparent; border: none;
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    cursor: pointer; font-family: inherit;
+    border-bottom: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .ann-panel-tab:hover { color: var(--text); }
+  .ann-panel-tab.active {
+    color: var(--accent); border-bottom-color: var(--accent);
+  }
+
+  /* 탭 컨텐츠 영역 */
+  .ann-panel-body {
+    flex: 1; overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  .ann-panel-pane {
+    display: none; padding: 18px 20px 24px;
+    flex: 1; min-height: 0;
+  }
+  .ann-panel-pane.active { display: flex; flex-direction: column; gap: 14px; }
+  .ann-panel-pane.chat { padding: 0; }   /* 채팅은 자체 레이아웃 */
+
+  .ann-panel-placeholder {
+    padding: 40px 16px; text-align: center; color: var(--muted);
+    font-size: 13px; line-height: 1.6;
+  }
+  .ann-panel-placeholder .ph-icon { font-size: 32px; opacity: 0.5; margin-bottom: 8px; }
   .ev-section { display: flex; flex-direction: column; gap: 6px; }
   .ev-section-h {
     font-size: 11px; font-weight: 700; color: var(--muted);
@@ -3890,6 +3967,45 @@
     </div>
   </div>
 
+  <!-- 공고 디테일 사이드 패널 (가이드 / 질문 / 분석 3탭) — 어디서든 트리거 -->
+  <div class="ann-panel-backdrop" id="ann-panel-backdrop" onclick="closeAnnPanel()"></div>
+  <aside class="ann-panel" id="ann-panel" aria-hidden="true">
+    <div class="ann-panel-head">
+      <div class="ann-panel-head-top">
+        <div style="flex:1; min-width:0;">
+          <h3 class="ann-panel-title" id="ann-panel-title">공고 제목</h3>
+          <div class="ann-panel-source" id="ann-panel-source"></div>
+        </div>
+        <button class="ann-panel-close" onclick="closeAnnPanel()" title="닫기">×</button>
+      </div>
+    </div>
+    <div class="ann-panel-tabs" role="tablist">
+      <button class="ann-panel-tab active" data-tab="guide" onclick="switchAnnPanelTab('guide')">✨ 가이드</button>
+      <button class="ann-panel-tab" data-tab="chat" onclick="switchAnnPanelTab('chat')">💬 질문</button>
+      <button class="ann-panel-tab" data-tab="analysis" onclick="switchAnnPanelTab('analysis')">📊 분석</button>
+    </div>
+    <div class="ann-panel-body">
+      <div class="ann-panel-pane active" id="ann-pane-guide">
+        <div class="ann-panel-placeholder">
+          <div class="ph-icon">✨</div>
+          <div>이 공고만을 위한 액션 가이드가 곧 표시됩니다.<br><span style="opacity:0.6">(Step 2 에서 구현)</span></div>
+        </div>
+      </div>
+      <div class="ann-panel-pane chat" id="ann-pane-chat">
+        <div class="ann-panel-placeholder" style="padding:60px 16px;">
+          <div class="ph-icon">💬</div>
+          <div>이 공고에 대해 자유롭게 질문해 보세요.<br><span style="opacity:0.6">(Step 3 에서 구현)</span></div>
+        </div>
+      </div>
+      <div class="ann-panel-pane" id="ann-pane-analysis">
+        <div class="ann-panel-placeholder">
+          <div class="ph-icon">📊</div>
+          <div>공고문 자동 분석 결과가 표시됩니다.<br><span style="opacity:0.6">(Step 4 에서 구현)</span></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
   <!-- 첨부 PDF 추가 모달 (파일 업로드 / 공고 페이지 URL) -->
   <div class="cmp-overlay" id="attach-overlay" onclick="_closeAttachModal(event)">
     <div class="cmp-modal attach-modal" onclick="event.stopPropagation()">
@@ -5158,6 +5274,7 @@ function _renderPlanCard(r, rank) {
 
       <div class="plan-cta-row">
         <button class="plan-pick-btn" id="plan-pick-${r.announcement_id}" onclick="togglePlanPick(${r.announcement_id})">${picked ? '✓ 담음' : '+ 내 플랜에 담기'}</button>
+        <button class="plan-cta" onclick="openAnnPanel(${r.announcement_id}, 'guide')" title="이 공고만의 가이드 + 질문">💬 가이드/질문</button>
         ${r.detail_url ? `<a class="plan-cta" href="${escapeHtml(r.detail_url)}" target="_blank" rel="noopener">원문 공고 →</a>` : ""}
         <button class="plan-cta" onclick="(function(){ const m=document.querySelector('.tab-btn[data-tab=\\'browse\\']'); if(m) m.click(); })()">둘러보기에서 보기</button>
       </div>
@@ -9037,6 +9154,83 @@ function closeEventDetail() {
   document.getElementById("ev-panel-backdrop").classList.remove("show");
   _evPanelCurrentId = null;
 }
+
+// ─── 공고 디테일 사이드 패널 (가이드/질문/분석) ───────────────────────
+// 어디서든 openAnnPanel(annId, [tab]) 으로 열림. tab default = 'guide'.
+let _annPanelCurrentId = null;
+let _annPanelCurrentTab = "guide";
+// 한 번 열어 본 (announcementId, tab) 조합을 기억해 재진입 시 다시 fetch 안 함
+const _annPanelLoaded = new Map();   // key = `${id}:${tab}` → true
+
+async function openAnnPanel(annId, tab) {
+  annId = parseInt(annId, 10);
+  if (!Number.isFinite(annId)) return;
+  const panel = document.getElementById("ann-panel");
+  const backdrop = document.getElementById("ann-panel-backdrop");
+  if (!panel || !backdrop) return;
+
+  // 공고 메타 로드 (제목/출처) — DB 에서 1건 조회. 새 가벼운 엔드포인트가 없다면 기존
+  // _matchResults / browseCache / _planLast 에서 fallback.
+  const meta = _findAnnouncementMeta(annId);
+  document.getElementById("ann-panel-title").textContent = meta?.title || `공고 #${annId}`;
+  document.getElementById("ann-panel-source").textContent =
+    [meta?.source_name || meta?.source_code, meta?.department, meta?.end_date ? `~${String(meta.end_date).slice(0,10)}` : null]
+    .filter(Boolean).join(" · ");
+
+  _annPanelCurrentId = annId;
+  backdrop.classList.add("show");
+  panel.classList.add("show");
+  panel.setAttribute("aria-hidden", "false");
+  switchAnnPanelTab(tab || _annPanelCurrentTab || "guide");
+}
+
+function closeAnnPanel() {
+  const panel = document.getElementById("ann-panel");
+  const backdrop = document.getElementById("ann-panel-backdrop");
+  if (panel) {
+    panel.classList.remove("show");
+    panel.setAttribute("aria-hidden", "true");
+  }
+  if (backdrop) backdrop.classList.remove("show");
+  _annPanelCurrentId = null;
+}
+
+function switchAnnPanelTab(name) {
+  if (!["guide", "chat", "analysis"].includes(name)) name = "guide";
+  _annPanelCurrentTab = name;
+  document.querySelectorAll(".ann-panel-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.tab === name);
+  });
+  document.querySelectorAll(".ann-panel-pane").forEach(p => {
+    p.classList.toggle("active", p.id === `ann-pane-${name}`);
+  });
+  // Step 2~4 에서 각 탭 컨텐츠 lazy-load 트리거 추가 예정
+}
+
+// 공고 메타를 현재 페이지에 캐시된 곳들에서 찾기 (id, title, source 등)
+function _findAnnouncementMeta(annId) {
+  const sources = [];
+  if (typeof _matchResults !== "undefined" && Array.isArray(_matchResults)) {
+    for (const r of _matchResults) if (r?.announcement?.id === annId) sources.push(r.announcement);
+  }
+  if (typeof browseCache !== "undefined" && Array.isArray(browseCache)) {
+    for (const a of browseCache) if (a?.id === annId) sources.push(a);
+  }
+  if (typeof _planLast !== "undefined" && _planLast?.recommendations) {
+    for (const r of _planLast.recommendations) if (r.announcement_id === annId) {
+      sources.push({
+        id: annId, title: r.title, source_code: r.source_code, source_name: r.source_name,
+        department: r.department, end_date: r.end_date, detail_url: r.detail_url,
+      });
+    }
+  }
+  return sources[0] || null;
+}
+
+// ESC 로 패널 닫기
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && _annPanelCurrentId != null) closeAnnPanel();
+});
 
 function _evToggleSelect() {
   if (_evPanelCurrentId == null) return;
