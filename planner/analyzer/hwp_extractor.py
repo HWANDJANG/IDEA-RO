@@ -15,12 +15,41 @@ HWP5 는 OLE2 (Compound Document) 컨테이너 안에 한컴 전용 바이너리
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 
 # OLE2 Compound Document 매직 바이트 — HWP5 / DOC / XLS 등 모두 동일.
 # (D0 CF 11 E0 A1 B1 1A E1 = "DocFile" ASCII art)
 _OLE2_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def _find_hwp5txt() -> str | list[str]:
+    """hwp5txt CLI 위치 탐색. systemd 가 venv 안에서 실행돼도 찾도록 다단 fallback.
+
+    우선순위:
+      1. 현재 Python (sys.executable) 와 같은 디렉터리의 hwp5txt
+         → venv 환경이면 venv/bin/hwp5txt 가 여기 있음
+      2. PATH 에서 hwp5txt 찾기
+      3. fallback: python -m hwp5.hwp5txt (모듈 실행)
+    """
+    # 1) sys.executable 디렉터리
+    py_bin_dir = os.path.dirname(sys.executable)
+    for name in ("hwp5txt", "hwp5txt.exe"):
+        candidate = os.path.join(py_bin_dir, name)
+        if os.path.isfile(candidate):
+            return candidate
+    # 2) PATH
+    found = shutil.which("hwp5txt")
+    if found:
+        return found
+    # 3) 모듈 실행 fallback (pyhwp 에 hwp5.hwp5txt 모듈 존재 시)
+    return [sys.executable, "-m", "hwp5.hwp5txt"]
+
+
+# 모듈 로드 시 1회만 탐색해 캐시
+_HWP5TXT_CMD = _find_hwp5txt()
 
 
 def is_hwp_bytes(data: bytes) -> bool:
@@ -46,16 +75,22 @@ def extract_hwp_text(hwp_bytes: bytes, *, timeout: int = 30) -> str:
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(hwp_bytes)
+        # _HWP5TXT_CMD 는 str (실행파일 경로) 또는 list (python -m fallback).
+        if isinstance(_HWP5TXT_CMD, list):
+            cmd = _HWP5TXT_CMD + [tmp_path]
+        else:
+            cmd = [_HWP5TXT_CMD, tmp_path]
         try:
             result = subprocess.run(
-                ["hwp5txt", tmp_path],
+                cmd,
                 capture_output=True,
                 timeout=timeout,
                 check=False,
             )
         except FileNotFoundError as e:
             raise ValueError(
-                "hwp5txt 명령을 찾을 수 없습니다 — pip install pyhwp 가 필요합니다"
+                "hwp5txt 명령을 찾을 수 없습니다 — `pip install pyhwp` 가 필요합니다. "
+                "venv 사용 시 그 venv 안에 설치해주세요."
             ) from e
         except subprocess.TimeoutExpired as e:
             raise ValueError(f"hwp5txt 실행이 {timeout}초 안에 끝나지 않았습니다") from e
