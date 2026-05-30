@@ -333,6 +333,244 @@ class ProfileFitResult(TypedDict):
     reasons: list[dict]  # [{label, ok, detail}]
 
 
+# ─── Step A: 분야(산업) 매칭 — 키워드 기반 ────────────────────────────────
+#
+# 자격(업력/지역/대상) 통과해도 분야가 안 맞으면 사용자는 "이게 왜 추천됐지?" 라고 느낌.
+# 사용자가 자기 분야를 multi-select 로 고르고, 공고 텍스트(title+content)에 분야 키워드가
+# 잡히면 가산점. LLM 없이 사전(dictionary)만으로 작동 — 즉시·비용 0.
+#
+# 정확도는 ~70% (동일 분야인데 키워드 표현이 다르면 miss). 정확도 향상은 Step B (LLM 분류).
+#
+# 키 = 분야 코드 (DB interest_tags JSON 배열에 저장). 값 = 매칭 키워드 set.
+
+INDUSTRY_TAGS: dict[str, dict[str, object]] = {
+    "it_ai": {
+        "label": "IT/AI",
+        "emoji": "💻",
+        "keywords": {
+            "AI", "인공지능", "머신러닝", "딥러닝", "ML", "LLM", "GPT", "챗봇", "ChatGPT",
+            "데이터", "빅데이터", "데이터분석", "분석",
+            "SaaS", "플랫폼", "소프트웨어", "앱", "어플", "모바일", "iOS", "Android",
+            "웹", "웹사이트", "백엔드", "프론트엔드", "풀스택", "API",
+            "클라우드", "AWS", "Azure", "GCP", "DevOps", "오픈소스",
+            "블록체인", "NFT", "Web3", "메타버스", "VR", "AR", "XR",
+            "사이버보안", "보안", "정보보호", "ICT", "정보통신", "디지털전환", "DX",
+            "로봇", "자율주행", "IoT", "사물인터넷", "5G", "6G",
+        },
+    },
+    "bio_medical": {
+        "label": "바이오/의료",
+        "emoji": "🧬",
+        "keywords": {
+            "바이오", "BT", "생명공학", "제약", "신약", "의약품", "백신",
+            "의료", "헬스케어", "건강", "병원", "진단", "치료",
+            "디지털헬스", "원격의료", "헬스테크", "의료기기", "메디컬",
+            "유전체", "게놈", "줄기세포", "세포치료", "면역", "단백질",
+            "임상", "전임상", "GMP", "식약처", "FDA",
+        },
+    },
+    "manufacturing": {
+        "label": "제조/소재",
+        "emoji": "🏭",
+        "keywords": {
+            "제조", "제조업", "생산", "공장", "스마트공장", "스마트팩토리",
+            "소재", "부품", "기계", "금속", "화학", "철강",
+            "반도체", "디스플레이", "전자", "이차전지", "배터리",
+            "3D프린팅", "적층제조", "정밀가공", "공정",
+            "자동차", "조선", "항공", "우주", "방산",
+        },
+    },
+    "content_culture": {
+        "label": "콘텐츠/문화",
+        "emoji": "🎬",
+        "keywords": {
+            "콘텐츠", "문화", "K-콘텐츠", "한류",
+            "영상", "영화", "드라마", "방송", "OTT", "유튜브",
+            "음악", "K-POP", "공연", "축제", "전시",
+            "게임", "e스포츠", "웹툰", "웹소설", "출판", "만화", "애니메이션",
+            "디자인", "UX", "UI", "브랜드", "패션",
+            "관광", "여행", "체험",
+        },
+    },
+    "agri_food": {
+        "label": "농업/식품",
+        "emoji": "🌾",
+        "keywords": {
+            "농업", "농산물", "농촌", "농가", "스마트팜", "스마트농업",
+            "식품", "식자재", "외식", "푸드테크", "F&B",
+            "수산", "어업", "양식", "수산물",
+            "축산", "낙농", "원예", "임업",
+            "친환경농산물", "유기농", "할랄", "전통식품",
+        },
+    },
+    "env_energy": {
+        "label": "환경/에너지",
+        "emoji": "🌱",
+        "keywords": {
+            "환경", "친환경", "탄소중립", "탄소", "넷제로", "CO2",
+            "에너지", "신재생", "재생에너지", "태양광", "풍력", "수소", "연료전지",
+            "ESS", "전기차", "EV", "충전", "그린수소",
+            "기후", "기후변화", "GreenTech", "그린", "ESG",
+            "폐기물", "재활용", "리사이클", "업사이클", "순환경제",
+        },
+    },
+    "education": {
+        "label": "교육/에듀테크",
+        "emoji": "📚",
+        "keywords": {
+            "교육", "에듀", "에듀테크", "EduTech", "이러닝", "e-러닝", "온라인교육",
+            "학습", "튜터", "강의", "코딩교육", "디지털교육",
+            "유아교육", "평생교육", "직업훈련", "재교육",
+            "학교", "대학", "학원", "강사",
+        },
+    },
+    "commerce_service": {
+        "label": "유통/서비스",
+        "emoji": "🛍️",
+        "keywords": {
+            "유통", "물류", "택배", "배송", "라스트마일", "풀필먼트",
+            "이커머스", "전자상거래", "쇼핑", "리테일", "마켓플레이스",
+            "서비스", "O2O", "공유", "공유경제", "구독", "구독경제",
+            "프랜차이즈", "소상공인", "자영업",
+        },
+    },
+    "fintech": {
+        "label": "핀테크/금융",
+        "emoji": "💳",
+        "keywords": {
+            "핀테크", "FinTech", "금융", "결제", "페이", "송금", "이체",
+            "투자", "자산", "보험", "인슈어테크", "InsurTech",
+            "대출", "P2P", "크라우드펀딩",
+            "회계", "세무", "세금", "정산",
+        },
+    },
+    "global_export": {
+        "label": "글로벌/수출",
+        "emoji": "🌏",
+        "keywords": {
+            "글로벌", "해외", "수출", "해외진출", "해외시장",
+            "현지화", "다국적", "오버시즈",
+            "북미", "유럽", "동남아", "아세안", "중국", "일본", "미국", "베트남", "인도",
+            "무역", "통상", "관세", "FTA",
+        },
+    },
+}
+
+
+_INDUSTRY_CODES: set[str] = set(INDUSTRY_TAGS.keys())
+
+
+def normalize_interest_tags(raw) -> list[str]:
+    """프론트/DB 에서 받은 interest_tags 를 정규화.
+    - 입력: list[str] 또는 JSON 문자열 또는 None
+    - 출력: 유효한 코드만 (순서 보존, 중복 제거)
+    """
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, str):
+        try:
+            import json as _json
+            raw = _json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    if not isinstance(raw, list):
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for v in raw:
+        if not isinstance(v, str):
+            continue
+        if v in _INDUSTRY_CODES and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+class IndustryFitResult(TypedDict):
+    score: int                  # 0~30
+    matched_tags: list[str]     # 매칭된 분야 코드 (그 공고가 어떤 사용자 분야와 매칭됐는지)
+    hit_keywords: list[str]     # 매칭된 키워드 일부 (디버깅 + UI 표시용, 최대 5개)
+
+
+# 미설정 사용자의 분야 점수 (중립). 기존 점수 분포를 깨지 않기 위해 중간값.
+INDUSTRY_NEUTRAL_SCORE = 15
+
+
+def compute_industry_fit(
+    interest_tags: list[str] | None,
+    *,
+    title: str | None = None,
+    content_text: str | None = None,
+    raw_meta: dict | None = None,
+) -> IndustryFitResult:
+    """공고가 사용자 관심 분야와 얼마나 맞는지 0~30 점으로 계산.
+
+    점수 규칙:
+      - 사용자가 분야 미설정: 중립 15 (가산점 없음, 패널티 없음)
+      - 1개 분야 매칭: 25
+      - 2개 분야 매칭: 30 (만점)
+      - 0개 매칭: 5 (자기 분야 키워드가 하나도 없으면 약한 감점)
+
+    분야당 키워드 hit 가 2회 이상이면 그 분야는 "강한 매칭" 으로 인정.
+    1회만 잡히면 약한 매칭 (분야 카운트엔 들지만 hit_keywords 에 추가).
+    """
+    tags = normalize_interest_tags(interest_tags)
+    if not tags:
+        return {"score": INDUSTRY_NEUTRAL_SCORE, "matched_tags": [], "hit_keywords": []}
+
+    # 공고 텍스트 합치기 (title 가중 = 2번 등장 효과)
+    title_text = (title or "").strip()
+    body_text = (content_text or "")[:8000]
+    # raw_meta 에서 추가 신호 (분야 분류 표시가 있는 K-Startup 일부)
+    meta_text = ""
+    if raw_meta:
+        for k in ("supt_biz_clsfc", "biz_pbanc_nm", "intg_pbanc_biz_nm"):
+            v = raw_meta.get(k)
+            if isinstance(v, str):
+                meta_text += " " + v
+    text = (title_text + " " + title_text + " " + meta_text + " " + body_text)
+
+    matched_tags: list[str] = []
+    hit_keywords: list[str] = []
+    for tag in tags:
+        info = INDUSTRY_TAGS.get(tag)
+        if not info:
+            continue
+        kws = info.get("keywords") or set()
+        hits_for_tag: list[str] = []
+        for kw in kws:
+            # 단어 매칭 — 한글은 word boundary 가 의미 없으므로 substring 으로 검사.
+            # 다만 영어 약어(AI, ML, DX, EV...) 는 대소문자 무시 + 양쪽이 영문자가 아닌 경우만 OK
+            #   (예: "AI" 가 "MAIN" 에 잘못 매칭되지 않도록).
+            if not kw:
+                continue
+            if kw.isascii() and kw.isalpha():
+                # 영문 약어/단어 — 대소문자 무시 + 단어 경계
+                pat = re.compile(r"(?<![A-Za-z])" + re.escape(kw) + r"(?![A-Za-z])", re.IGNORECASE)
+                if pat.search(text):
+                    hits_for_tag.append(kw)
+            else:
+                # 한글 또는 혼합 — substring
+                if kw in text:
+                    hits_for_tag.append(kw)
+        if hits_for_tag:
+            matched_tags.append(tag)
+            # hit_keywords 누적 (최대 5개까지)
+            for kw in hits_for_tag:
+                if kw not in hit_keywords and len(hit_keywords) < 5:
+                    hit_keywords.append(kw)
+
+    n = len(matched_tags)
+    if n >= 2:
+        score = 30
+    elif n == 1:
+        score = 25
+    else:
+        score = 5  # 자기 분야 키워드가 하나도 없는 공고
+
+    return {"score": score, "matched_tags": matched_tags, "hit_keywords": hit_keywords}
+
+
 def compute_profile_fit(
     profile: Optional[dict],
     raw_meta: Optional[dict],

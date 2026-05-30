@@ -2339,6 +2339,37 @@
   .plan-effort-badge.low  { background: var(--green-soft, #E4EDE2); color: var(--green, #3F7A4D); }
   .plan-effort-badge.mid  { background: var(--yellow-soft, #F3E8CE); color: var(--yellow, #B5862B); }
   .plan-effort-badge.high { background: var(--red-soft, #F3DBD1); color: var(--red, #C0432A); }
+  /* Step A: 분야 매칭 배지 */
+  .plan-industry-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+    background: #e0f2fe; color: #075985;
+    border: 1px solid #bae6fd;
+  }
+  /* 프로필 패널의 관심 분야 chip */
+  .pf-tag-grid {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .pf-tag-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 13px; border-radius: 999px;
+    font-size: 13px; font-weight: 500;
+    background: var(--bg-subtle, #fafaf7); color: var(--text);
+    border: 1.5px solid var(--border, #e5e4dc);
+    cursor: pointer; user-select: none;
+    transition: all 0.12s;
+  }
+  .pf-tag-chip:hover { border-color: var(--accent, #d97757); }
+  .pf-tag-chip.selected {
+    background: var(--accent-soft, #fde9d8);
+    border-color: var(--accent, #d97757);
+    color: var(--accent, #c4663d);
+    font-weight: 700;
+  }
+  .pf-tag-help {
+    font-size: 11.5px; color: var(--muted, #888); margin-top: 6px;
+  }
 
   .plan-cards { display: flex; flex-direction: column; gap: 14px; }
   .plan-card {
@@ -3793,11 +3824,17 @@
           <input type="range" id="w-urgency" min="0" max="100" value="50" oninput="_onPlanWeightChange()">
           <div class="plan-slider-ends"><span>무관</span><span>급한 거 우선</span></div>
         </div>
+        <div class="plan-slider">
+          <label for="w-industry">📡 분야 적합도 <span class="w-val" id="w-industry-v">70</span></label>
+          <input type="range" id="w-industry" min="0" max="100" value="70" oninput="_onPlanWeightChange()">
+          <div class="plan-slider-ends"><span>분야 무관</span><span>내 분야 우선</span></div>
+        </div>
         <div class="plan-presets">
-          <button class="plan-preset" onclick="_applyPlanPreset(50,30,50)">균형</button>
-          <button class="plan-preset" onclick="_applyPlanPreset(100,0,20)">💰 고액 위주</button>
-          <button class="plan-preset" onclick="_applyPlanPreset(20,100,50)">⚡ 쉬운 거 위주</button>
-          <button class="plan-preset" onclick="_applyPlanPreset(50,30,100)">⏰ 마감 우선</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(50,30,50,70)">균형</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(100,0,20,70)">💰 고액 위주</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(20,100,50,70)">⚡ 쉬운 거 위주</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(50,30,100,70)">⏰ 마감 우선</button>
+          <button class="plan-preset" onclick="_applyPlanPreset(40,20,30,100)">📡 내 분야 우선</button>
         </div>
       </div>
       <div id="plan-body"><div class="empty">불러오는 중...</div></div>
@@ -4484,26 +4521,31 @@ let _planLast = null;
 
 function _planWeightsFromUI() {
   return {
-    amount:  (parseInt(document.getElementById("w-amount").value, 10)  / 100),
-    effort:  (parseInt(document.getElementById("w-effort").value, 10)  / 100),
-    urgency: (parseInt(document.getElementById("w-urgency").value, 10) / 100),
+    amount:   (parseInt(document.getElementById("w-amount").value,   10) / 100),
+    effort:   (parseInt(document.getElementById("w-effort").value,   10) / 100),
+    urgency:  (parseInt(document.getElementById("w-urgency").value,  10) / 100),
+    industry: (parseInt(document.getElementById("w-industry").value, 10) / 100),
   };
 }
 
 function _onPlanWeightChange() {
   // 슬라이더 값 라벨 즉시 갱신
-  document.getElementById("w-amount-v").textContent  = document.getElementById("w-amount").value;
-  document.getElementById("w-effort-v").textContent  = document.getElementById("w-effort").value;
-  document.getElementById("w-urgency-v").textContent = document.getElementById("w-urgency").value;
+  document.getElementById("w-amount-v").textContent   = document.getElementById("w-amount").value;
+  document.getElementById("w-effort-v").textContent   = document.getElementById("w-effort").value;
+  document.getElementById("w-urgency-v").textContent  = document.getElementById("w-urgency").value;
+  document.getElementById("w-industry-v").textContent = document.getElementById("w-industry").value;
   // debounce 300ms 후 재호출
   clearTimeout(_planDebounceTimer);
   _planDebounceTimer = setTimeout(loadPlan, 300);
 }
 
-function _applyPlanPreset(amount, effort, urgency) {
-  document.getElementById("w-amount").value  = amount;
-  document.getElementById("w-effort").value  = effort;
-  document.getElementById("w-urgency").value = urgency;
+function _applyPlanPreset(amount, effort, urgency, industry) {
+  document.getElementById("w-amount").value   = amount;
+  document.getElementById("w-effort").value   = effort;
+  document.getElementById("w-urgency").value  = urgency;
+  if (industry != null) {
+    document.getElementById("w-industry").value = industry;
+  }
   _onPlanWeightChange();
 }
 
@@ -4515,7 +4557,7 @@ async function loadPlan() {
   body.innerHTML = `<div class="empty">매칭 계산 중...</div>`;
   meta.textContent = "";
   try {
-    const url = `/api/plan?top_n=${topN}&w_amount=${w.amount}&w_effort=${w.effort}&w_urgency=${w.urgency}`;
+    const url = `/api/plan?top_n=${topN}&w_amount=${w.amount}&w_effort=${w.effort}&w_urgency=${w.urgency}&w_industry=${w.industry}`;
     const res = await fetch(url);
     if (res.status === 401) {
       body.innerHTML = _planEmptyState("🔒", "로그인이 필요합니다",
@@ -4978,6 +5020,37 @@ async function _planTlPush(provider) {
   await _pushEventsToProvider(events, provider);
 }
 
+// Step A: 사용자 관심 분야 (matcher.INDUSTRY_TAGS 와 동일). 프론트에서 label/emoji 표시용.
+const INDUSTRY_TAGS_UI = {
+  it_ai:            { label: "IT/AI",         emoji: "💻" },
+  bio_medical:      { label: "바이오/의료",   emoji: "🧬" },
+  manufacturing:    { label: "제조/소재",     emoji: "🏭" },
+  content_culture:  { label: "콘텐츠/문화",   emoji: "🎬" },
+  agri_food:        { label: "농업/식품",     emoji: "🌾" },
+  env_energy:       { label: "환경/에너지",   emoji: "🌱" },
+  education:        { label: "교육/에듀테크", emoji: "📚" },
+  commerce_service: { label: "유통/서비스",   emoji: "🛍️" },
+  fintech:          { label: "핀테크/금융",   emoji: "💳" },
+  global_export:    { label: "글로벌/수출",   emoji: "🌏" },
+};
+const INDUSTRY_TAG_ORDER = [
+  "it_ai", "bio_medical", "manufacturing", "content_culture", "agri_food",
+  "env_energy", "education", "commerce_service", "fintech", "global_export",
+];
+
+function _renderIndustryBadge(signals) {
+  // signals.industry_tags 가 있으면 매칭 배지, 없으면 미설정/미매칭 알림 없음
+  const tags = signals?.industry_tags || [];
+  if (!tags.length) return "";
+  const hits = signals.industry_hits || [];
+  const labels = tags.map(t => {
+    const info = INDUSTRY_TAGS_UI[t];
+    return info ? `${info.emoji} ${info.label}` : t;
+  }).join(" · ");
+  const tip = hits.length ? `매칭 키워드: ${hits.join(", ")}` : "분야 매칭";
+  return `<span class="plan-industry-badge" title="${escapeHtml(tip)}">📡 ${escapeHtml(labels)}</span>`;
+}
+
 function _renderPlanCard(r, rank) {
   // D-day 등급
   const dd = r.days_left == null ? "" :
@@ -5054,7 +5127,8 @@ function _renderPlanCard(r, rank) {
               const lvl = r.signals.effort_label === "높음" ? "high" : (r.signals.effort_label === "중간" ? "mid" : "low");
               return `<span class="plan-effort-badge ${lvl}" title="유형 + 필요 서류 ${r.signals.req_doc_count || 0}건 기반">⚙️ 노력 ${escapeHtml(r.signals.effort_label)}</span>`;
             })() : ""}
-            <span class="plan-score" title="profile ${r.signals?.profile} + urgency ${r.signals?.urgency} + amount ${r.signals?.amount} - effort ${r.signals?.effort}">점수 ${r.score_combined}</span>
+            ${_renderIndustryBadge(r.signals)}
+            <span class="plan-score" title="profile ${r.signals?.profile} + urgency ${r.signals?.urgency} + amount ${r.signals?.amount} - effort ${r.signals?.effort} + industry ${r.signals?.industry}">점수 ${r.score_combined}</span>
           </div>
         </div>
       </div>
@@ -9703,6 +9777,27 @@ async function renderProfilePanel() {
           style="width:100%; padding:9px 12px; border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:13px;">
       </div>
     </div>
+
+    <!-- ─── 섹션 4: 관심 분야 (Step A 매칭용) ─── -->
+    <div class="profile-section-h">관심 분야 <span style="font-weight:400; font-size:12px; color:var(--muted)">— 추천 공고의 분야 매칭에 사용됩니다</span></div>
+    <div class="pf-chip-section" style="padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:8px;">
+      <div class="pf-chip-cat-label">우리 사업이 속한 분야를 모두 선택해 주세요 (선택 안 하면 분야 매칭은 적용되지 않습니다)</div>
+      <div class="pf-tag-grid" id="pf-interest-tag-grid">
+        ${INDUSTRY_TAG_ORDER.map(code => {
+          const info = INDUSTRY_TAGS_UI[code];
+          const selected = (Array.isArray(p.interest_tags) ? p.interest_tags : []).includes(code);
+          return `
+            <button type="button"
+              class="pf-tag-chip ${selected ? "selected" : ""}"
+              data-tag="${escapeHtml(code)}"
+              onclick="this.classList.toggle('selected')">
+              ${info.emoji} ${escapeHtml(info.label)}
+            </button>
+          `;
+        }).join("")}
+      </div>
+      <div class="pf-tag-help">선택한 분야의 키워드(예: 'AI', '챗봇', '스마트팩토리')가 공고 제목/본문에 잡히면 추천 순위가 올라갑니다.</div>
+    </div>
   `;
 
   // 주소 hidden 필드 (region) 변경 시 표시용 input 동기화
@@ -9766,6 +9861,11 @@ async function saveProfileForm() {
   const industry = primaryArea ? (PF_AREA_TO_INDUSTRY[primaryArea] || "기타 서비스") : null;
   const industry_detail = activeAreas.length ? activeAreas.join(", ") : null;
 
+  // Step A: 관심 분야 chip 수집 — 매칭 키워드 사전과 연결되는 코드 (예: "it_ai", "fintech")
+  const interest_tags = Array.from(
+    document.querySelectorAll("#pf-interest-tag-grid .pf-tag-chip.selected")
+  ).map(b => b.dataset.tag);
+
   const empCountRaw = document.getElementById("pf-employee-count").value;
   const employee_count = empCountRaw === "" ? null : parseInt(empCountRaw, 10);
 
@@ -9791,6 +9891,7 @@ async function saveProfileForm() {
     industry_type:        document.getElementById("pf-industry-type").value.trim() || null,
     industry:             industry,
     industry_detail:      industry_detail,
+    interest_tags:        interest_tags,
   };
 
   btn.disabled = true;

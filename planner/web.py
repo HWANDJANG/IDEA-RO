@@ -572,10 +572,11 @@ class Handler(BaseHTTPRequestHandler):
         """사용자 맞춤 추천 + 액션 플랜 (Top N 공고 + 부족 서류 + 발급 태스크).
 
         Query params:
-          top_n     : 1~20, default 5
-          w_amount  : 0~1, default 0.5 (지원금 규모 중요도)
-          w_effort  : 0~1, default 0.3 (노력 회피)
-          w_urgency : 0~1, default 0.5 (마감 임박 우선)
+          top_n      : 1~20, default 5
+          w_amount   : 0~1, default 0.5 (지원금 규모 중요도)
+          w_effort   : 0~1, default 0.3 (노력 회피)
+          w_urgency  : 0~1, default 0.5 (마감 임박 우선)
+          w_industry : 0~1, default 0.7 (관심 분야 매칭 중요도) — Step A
         """
         from planner.planner import compose_action_plan
         user_id = self._require_user_id()
@@ -594,9 +595,10 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             top_n = 5
         weights = {
-            "amount":  _f("w_amount",  0.5),
-            "effort":  _f("w_effort",  0.3),
-            "urgency": _f("w_urgency", 0.5),
+            "amount":   _f("w_amount",   0.5),
+            "effort":   _f("w_effort",   0.3),
+            "urgency":  _f("w_urgency",  0.5),
+            "industry": _f("w_industry", 0.7),
         }
         try:
             plan = compose_action_plan(user_id, top_n=top_n, weights=weights)
@@ -2759,9 +2761,13 @@ class Handler(BaseHTTPRequestHandler):
         "english_name", "corporation_number", "representative_birth", "employee_count",
         "founding_type", "business_address", "address_zonecode", "phone", "fax",
         "website", "industry_code", "industry_type",
+        # Phase 8 (Step A): 관심 분야 — JSON 배열 (예: '["it_ai","fintech"]')
+        "interest_tags",
     )
     _BUSINESS_TYPES = {"individual", "corporate", "prelaunch"}
     _INT_FIELDS = {"employee_count"}
+    # JSON 배열로 저장되는 필드 — POST 시 list → json.dumps, GET 시 json.loads
+    _JSON_LIST_FIELDS = {"interest_tags"}
 
     def _handle_profile_get(self) -> None:
         user_id = self._require_user_id()
@@ -2780,6 +2786,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"profile": None, "completed": False})
             return
         profile = dict(row)
+        # JSON 배열 컬럼은 list 로 변환해 응답
+        for f in self._JSON_LIST_FIELDS:
+            raw_v = profile.get(f)
+            if isinstance(raw_v, str) and raw_v:
+                try:
+                    profile[f] = json.loads(raw_v)
+                except (ValueError, TypeError):
+                    profile[f] = []
+            else:
+                profile[f] = []
         # 필수 필드 모두 채워졌는지 (예비창업자는 establishment_date 면제)
         bt = profile.get("business_type")
         required = ["company_name", "business_type", "region", "industry"]
@@ -2800,9 +2816,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # 받은 필드만 추출 (알 수 없는 키 무시)
+        from planner.matcher import normalize_interest_tags
+
         clean: dict = {}
         for k in self._PROFILE_FIELDS:
             v = data.get(k)
+            if k in self._JSON_LIST_FIELDS:
+                # interest_tags: list 든 str 이든 정규화 후 JSON 문자열로 저장
+                normalized = normalize_interest_tags(v)
+                clean[k] = json.dumps(normalized, ensure_ascii=False) if normalized else None
+                continue
             if isinstance(v, str):
                 v = v.strip() or None
             if k in self._INT_FIELDS and v is not None and v != "":
@@ -2852,7 +2875,18 @@ class Handler(BaseHTTPRequestHandler):
             conn.commit()
         finally:
             conn.close()
-        self._send_json({"ok": True, "profile": clean})
+        # 응답에서는 JSON 문자열 저장 필드를 다시 list 로 풀어 프론트가 그대로 쓸 수 있게
+        response_profile = dict(clean)
+        for f in self._JSON_LIST_FIELDS:
+            v = response_profile.get(f)
+            if isinstance(v, str):
+                try:
+                    response_profile[f] = json.loads(v)
+                except (ValueError, TypeError):
+                    response_profile[f] = []
+            elif v is None:
+                response_profile[f] = []
+        self._send_json({"ok": True, "profile": response_profile})
 
     # ─── 보유 서류 (Phase 6: localStorage → DB) ────────────────────────────
     def _handle_my_docs_list(self) -> None:

@@ -17,9 +17,12 @@ from typing import Optional, cast
 
 from .matcher import (
     BusinessType,
+    INDUSTRY_TAGS,
     classify_announcement_type,
+    compute_industry_fit,
     compute_profile_fit,
     match_announcement,
+    normalize_interest_tags,
 )
 from .paths import DB_PATH
 
@@ -128,11 +131,16 @@ _NARRATIVE_USER_TMPL = """## 사용자 프로필
 - 지원금 규모: {w_amount}
 - 노력 회피: {w_effort}
 - 마감 임박: {w_urgency}
+- 분야 적합도: {w_industry}
+
+## 사용자 관심 분야 (선택)
+{interest_tags_str}
 
 ## 추천 후보 ({n}건, 위에서부터 1순위)
 {cards}
 
 위 각 후보에 대해 "왜 이 사용자에게 맞는지" 한 문장 요약을 만들어 주세요.
+"분야매칭=…" 신호가 있으면 그 분야의 매칭 키워드를 활용해 자연스럽게 설명하세요.
 """
 
 _NARRATIVE_SCHEMA: dict = {
@@ -159,7 +167,12 @@ _NARRATIVE_SCHEMA: dict = {
 def _narrative_cache_key(user_id: int, ann_ids: list[int], weights: dict) -> str:
     """user + 추천 조합 + 가중치 기반 캐시 키. 슬라이더 같은 조합 → 같은 키."""
     parts = [str(user_id), ",".join(str(x) for x in sorted(ann_ids))]
-    parts.append(f"a{weights['amount']:.2f}e{weights['effort']:.2f}u{weights['urgency']:.2f}")
+    parts.append(
+        f"a{weights.get('amount', 0.5):.2f}"
+        f"e{weights.get('effort', 0.3):.2f}"
+        f"u{weights.get('urgency', 0.5):.2f}"
+        f"i{weights.get('industry', 0.7):.2f}"
+    )
     raw = "|".join(parts)
     h = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
     return f"plan_narrative_{user_id}_{h}"
@@ -184,6 +197,13 @@ def _card_for_narrative(r: dict) -> str:
         f"노력={s.get('effort_label')} (서류 {s.get('req_doc_count', 0)}건)",
         f"자격={r.get('profile_fit', {}).get('score', 0)}점",
     ]
+    # Step A: 사용자 관심 분야 매칭 — 매칭됐을 때만 추가 (없으면 시각 노이즈)
+    matched = s.get("industry_tags") or []
+    hits = s.get("industry_hits") or []
+    if matched:
+        labels = [INDUSTRY_TAGS.get(t, {}).get("label", t) for t in matched]
+        kw_str = f" ({', '.join(hits[:3])})" if hits else ""
+        parts.append(f"분야매칭={'/'.join(labels)}{kw_str}")
     return "- " + " | ".join(parts)
 
 
@@ -223,11 +243,20 @@ def generate_recommendation_narratives(
         conn.close()
 
     profile_safe = _profile_for_narrative(profile)
+    interest_tags = plan.get("interest_tags") or []
+    if interest_tags:
+        interest_str = ", ".join(
+            INDUSTRY_TAGS.get(t, {}).get("label", t) for t in interest_tags
+        )
+    else:
+        interest_str = "(미설정 — 분야 매칭 점수는 중립 적용)"
     user_msg = _NARRATIVE_USER_TMPL.format(
         profile_json=json.dumps(profile_safe, ensure_ascii=False),
-        w_amount=weights["amount"],
-        w_effort=weights["effort"],
-        w_urgency=weights["urgency"],
+        w_amount=weights.get("amount", 0.5),
+        w_effort=weights.get("effort", 0.3),
+        w_urgency=weights.get("urgency", 0.5),
+        w_industry=weights.get("industry", 0.7),
+        interest_tags_str=interest_str,
         n=len(recs),
         cards="\n".join(_card_for_narrative(r) for r in recs),
     )
@@ -666,7 +695,7 @@ def generate_action_guide(
 # compute_profile_fit / match_announcement 가 보는 핵심 필드만.
 _PLAN_PROFILE_FIELDS = (
     "business_type", "establishment_date", "region", "industry",
-    "company_name", "founding_type",
+    "company_name", "founding_type", "interest_tags",
 )
 
 
@@ -747,21 +776,24 @@ def compose_action_plan(
 ) -> dict:
     """사용자별 Top N 추천 공고 + 각 공고의 부족 서류 + 발급 태스크 반환.
 
-    weights (0~1, default 0.5 / 0.3 / 0.5):
-      - amount:  지원금 규모 중요도 (1=고액 위주, 0=무시)
-      - effort:  노력 회피 정도 (1=쉬운 거 위주, 0=노력 무관)
-      - urgency: 마감 임박 우선 (1=급한 거 위주, 0=무관)
+    weights (0~1, default 0.5 / 0.3 / 0.5 / 0.7):
+      - amount:   지원금 규모 중요도 (1=고액 위주, 0=무시)
+      - effort:   노력 회피 정도 (1=쉬운 거 위주, 0=노력 무관)
+      - urgency:  마감 임박 우선 (1=급한 거 위주, 0=무관)
+      - industry: 관심 분야 매칭 (1=내 분야 강력 우선, 0=분야 무시) — Step A
 
     점수 공식:
       combined = profile_fit
-               + urgency_score * w_urgency
-               + amount_score  * w_amount
-               - effort_score  * w_effort
+               + urgency_score  * w_urgency
+               + amount_score   * w_amount
+               - effort_score   * w_effort
+               + industry_score * w_industry
     """
     weights = weights or {}
-    w_amount  = max(0.0, min(1.0, float(weights.get("amount",  0.5))))
-    w_effort  = max(0.0, min(1.0, float(weights.get("effort",  0.3))))
-    w_urgency = max(0.0, min(1.0, float(weights.get("urgency", 0.5))))
+    w_amount   = max(0.0, min(1.0, float(weights.get("amount",   0.5))))
+    w_effort   = max(0.0, min(1.0, float(weights.get("effort",   0.3))))
+    w_urgency  = max(0.0, min(1.0, float(weights.get("urgency",  0.5))))
+    w_industry = max(0.0, min(1.0, float(weights.get("industry", 0.7))))
 
     today = date.today()
     conn = sqlite3.connect(DB_PATH)
@@ -775,6 +807,9 @@ def compose_action_plan(
 
     raw_bt = (profile or {}).get("business_type") or "individual"
     bt: BusinessType = cast(BusinessType, raw_bt if raw_bt in ("individual", "corporate") else "individual")
+
+    # Step A: 사용자의 관심 분야 (멀티 선택). 미설정 사용자는 빈 list → 분야 점수 중립.
+    interest_tags = normalize_interest_tags((profile or {}).get("interest_tags"))
 
     # ── 1단계: 모든 자격 통과 공고에 대해 light score ──
     scored: list[tuple] = []
@@ -798,6 +833,15 @@ def compose_action_plan(
         won, amt_display = _extract_amount_won(a.get("content_text"), raw_meta)
         amount_score = _amount_to_score(won)
 
+        # Step A: 분야 매칭 (키워드 기반, LLM 없이)
+        industry_fit = compute_industry_fit(
+            interest_tags,
+            title=a.get("title"),
+            content_text=a.get("content_text"),
+            raw_meta=raw_meta,
+        )
+        industry_score = industry_fit["score"]
+
         # light effort: 서류 수 모르므로 type 기반만. Top N detail 단계에서 보정.
         effort_score_light = _estimate_effort(0, type_info["code"])
 
@@ -806,14 +850,18 @@ def compose_action_plan(
             + int(urgency_score * w_urgency)
             + int(amount_score  * w_amount)
             - int(effort_score_light * w_effort)
+            + int(industry_score * w_industry)
         )
         signals_light = {
-            "profile":        int(fit["score"]),
-            "urgency":        urgency_score,
-            "amount":         amount_score,
-            "effort":         effort_score_light,
-            "amount_won":     won,
-            "amount_display": amt_display,
+            "profile":         int(fit["score"]),
+            "urgency":         urgency_score,
+            "amount":          amount_score,
+            "effort":          effort_score_light,
+            "industry":        industry_score,
+            "industry_tags":   industry_fit["matched_tags"],
+            "industry_hits":   industry_fit["hit_keywords"],
+            "amount_won":      won,
+            "amount_display":  amt_display,
         }
         scored.append((combined_light, days_left, a, fit, raw_meta, type_info, signals_light))
 
@@ -875,9 +923,10 @@ def compose_action_plan(
         # combined 재계산 (effort 보정 반영)
         combined = (
             int(fit["score"])
-            + int(signals["urgency"] * w_urgency)
-            + int(signals["amount"]  * w_amount)
-            - int(effort_score       * w_effort)
+            + int(signals["urgency"]  * w_urgency)
+            + int(signals["amount"]   * w_amount)
+            - int(effort_score        * w_effort)
+            + int(signals["industry"] * w_industry)
         )
 
         recommendations.append({
@@ -930,7 +979,13 @@ def compose_action_plan(
         "eligible_pool": len(scored),
         "top_n": top_n,
         "business_type": bt,
-        "weights": {"amount": w_amount, "effort": w_effort, "urgency": w_urgency},
+        "weights": {
+            "amount":   w_amount,
+            "effort":   w_effort,
+            "urgency":  w_urgency,
+            "industry": w_industry,
+        },
+        "interest_tags": interest_tags,
         "recommendations": recommendations,
     }
 

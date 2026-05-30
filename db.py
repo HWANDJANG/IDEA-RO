@@ -294,6 +294,9 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
     ("user_profiles", "industry_type",       "TEXT"),
     # Phase 4: 폴더 ↔ 공고 연결 (정밀 비교: 매칭 카드에서 PDF 첨부 시 자동 생성)
     ("attachment_folders", "announcement_id", "INTEGER REFERENCES announcements(id)"),
+    # Phase 8 (Step A 분야 매칭): 사용자가 자기 분야를 멀티 선택. JSON 배열 (예: '["it_ai","fintech"]').
+    # NULL/빈 배열이면 분야 점수 = 중립 (15점), 적용 안 한 사용자도 기존처럼 동작.
+    ("user_profiles", "interest_tags",       "TEXT"),
 ]
 
 
