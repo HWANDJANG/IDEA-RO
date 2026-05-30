@@ -9595,6 +9595,22 @@ const PF_AREA_TO_INDUSTRY = {
   "관광·여행":       "기타 서비스",
   "기타":            "기타 서비스",
 };
+// Step A: 업종 chip → 분야 매칭 코드 (matcher.INDUSTRY_TAGS 키). 멀티 매핑 가능.
+// "관광·여행" 은 콘텐츠/문화 키워드(관광/여행) 와 동일 사전 사용.
+const PF_AREA_TO_TAGS = {
+  "IT·소프트웨어":   ["it_ai"],
+  "제조·하드웨어":   ["manufacturing"],
+  "의료·바이오":     ["bio_medical"],
+  "서비스업":        ["commerce_service"],
+  "유통·이커머스":   ["commerce_service"],
+  "식음료·외식":     ["agri_food"],
+  "콘텐츠·미디어":   ["content_culture"],
+  "교육":            ["education"],
+  "금융·핀테크":     ["fintech"],
+  "친환경·에너지":   ["env_energy"],
+  "관광·여행":       ["content_culture"],
+  "기타":            [],
+};
 
 const FOUNDING_TYPES = ["예비 창업자", "개인 사업자", "법인 사업자"];
 const FOUNDING_TO_BTYPE = {
@@ -9756,10 +9772,10 @@ async function renderProfilePanel() {
       </div>
     </div>
 
-    <!-- ─── 섹션 3: 업종 ─── -->
-    <div class="profile-section-h">업종</div>
+    <!-- ─── 섹션 3: 업종 (= 분야 매칭 입력) ─── -->
+    <div class="profile-section-h">업종 <span style="font-weight:400; font-size:12px; color:var(--muted)">— 맞춤 플랜의 분야 매칭에 함께 사용됩니다</span></div>
     <div class="pf-chip-section" style="padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:8px;">
-      <div class="pf-chip-cat-label">대표 업종을 선택하세요 (중복 선택 가능)</div>
+      <div class="pf-chip-cat-label">대표 업종을 선택하세요 (중복 선택 가능) — 선택한 업종의 키워드가 공고 제목/본문에 잡히면 추천 순위가 올라갑니다.</div>
       <div class="pf-chips" id="pf-area-chips">
         ${PF_BUSINESS_AREAS.map(area => `
           <button type="button"
@@ -9776,27 +9792,6 @@ async function renderProfilePanel() {
           value="${escapeHtml(p.industry_type || "")}" placeholder="예: 정보통신업, 도매·소매업"
           style="width:100%; padding:9px 12px; border:1px solid var(--border-strong); border-radius:8px; font-family:inherit; font-size:13px;">
       </div>
-    </div>
-
-    <!-- ─── 섹션 4: 관심 분야 (Step A 매칭용) ─── -->
-    <div class="profile-section-h">관심 분야 <span style="font-weight:400; font-size:12px; color:var(--muted)">— 추천 공고의 분야 매칭에 사용됩니다</span></div>
-    <div class="pf-chip-section" style="padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:8px;">
-      <div class="pf-chip-cat-label">우리 사업이 속한 분야를 모두 선택해 주세요 (선택 안 하면 분야 매칭은 적용되지 않습니다)</div>
-      <div class="pf-tag-grid" id="pf-interest-tag-grid">
-        ${INDUSTRY_TAG_ORDER.map(code => {
-          const info = INDUSTRY_TAGS_UI[code];
-          const selected = (Array.isArray(p.interest_tags) ? p.interest_tags : []).includes(code);
-          return `
-            <button type="button"
-              class="pf-tag-chip ${selected ? "selected" : ""}"
-              data-tag="${escapeHtml(code)}"
-              onclick="this.classList.toggle('selected')">
-              ${info.emoji} ${escapeHtml(info.label)}
-            </button>
-          `;
-        }).join("")}
-      </div>
-      <div class="pf-tag-help">선택한 분야의 키워드(예: 'AI', '챗봇', '스마트팩토리')가 공고 제목/본문에 잡히면 추천 순위가 올라갑니다.</div>
     </div>
   `;
 
@@ -9861,10 +9856,13 @@ async function saveProfileForm() {
   const industry = primaryArea ? (PF_AREA_TO_INDUSTRY[primaryArea] || "기타 서비스") : null;
   const industry_detail = activeAreas.length ? activeAreas.join(", ") : null;
 
-  // Step A: 관심 분야 chip 수집 — 매칭 키워드 사전과 연결되는 코드 (예: "it_ai", "fintech")
-  const interest_tags = Array.from(
-    document.querySelectorAll("#pf-interest-tag-grid .pf-tag-chip.selected")
-  ).map(b => b.dataset.tag);
+  // Step A: 업종 chip 에서 분야 매칭 코드 자동 생성 (사용자 추가 입력 없음).
+  // 중복 제거 — 예: "서비스업" + "유통·이커머스" 둘 다 commerce_service 로 매핑되면 1개로 통합.
+  const tagSet = new Set();
+  for (const area of activeAreas) {
+    for (const tag of (PF_AREA_TO_TAGS[area] || [])) tagSet.add(tag);
+  }
+  const interest_tags = Array.from(tagSet);
 
   const empCountRaw = document.getElementById("pf-employee-count").value;
   const employee_count = empCountRaw === "" ? null : parseInt(empCountRaw, 10);

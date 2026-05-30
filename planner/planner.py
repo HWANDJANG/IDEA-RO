@@ -695,8 +695,65 @@ def generate_action_guide(
 # compute_profile_fit / match_announcement 가 보는 핵심 필드만.
 _PLAN_PROFILE_FIELDS = (
     "business_type", "establishment_date", "region", "industry",
-    "company_name", "founding_type", "interest_tags",
+    "company_name", "founding_type", "interest_tags", "industry_detail",
 )
+
+
+# Step A: 업종 chip(industry_detail) → 분야 매칭 코드 (matcher.INDUSTRY_TAGS 키).
+# 프론트의 PF_AREA_TO_TAGS 와 1:1. 기존 사용자가 profile 을 다시 저장하지 않아도
+# industry_detail 에서 자동 추론되어 분야 매칭이 즉시 동작.
+_AREA_TO_TAGS: dict[str, list[str]] = {
+    "IT·소프트웨어":   ["it_ai"],
+    "제조·하드웨어":   ["manufacturing"],
+    "의료·바이오":     ["bio_medical"],
+    "서비스업":        ["commerce_service"],
+    "유통·이커머스":   ["commerce_service"],
+    "식음료·외식":     ["agri_food"],
+    "콘텐츠·미디어":   ["content_culture"],
+    "교육":            ["education"],
+    "금융·핀테크":     ["fintech"],
+    "친환경·에너지":   ["env_energy"],
+    "관광·여행":       ["content_culture"],
+    "기타":            [],
+}
+
+
+def _norm_area_key(s: str) -> str:
+    """업종 칩 텍스트 정규화 — `·`, `/`, 공백, 대소문자 제거."""
+    return re.sub(r"[·/\s]+", "", s or "").lower()
+
+
+# 정규화 키로도 조회 가능하게 미리 인덱스 구축
+_AREA_TO_TAGS_NORM: dict[str, list[str]] = {
+    _norm_area_key(k): v for k, v in _AREA_TO_TAGS.items()
+}
+
+
+def _infer_interest_tags_from_profile(profile: Optional[dict]) -> list[str]:
+    """interest_tags 가 비어 있으면 industry_detail (콤마 구분 업종 칩) 에서 추론.
+
+    이전 버전에선 interest_tags 가 별도 chip 이었지만, UI 통합 후엔 업종 chip 만
+    유지하고 매칭 코드는 자동 매핑. 기존 사용자(이미 업종 선택해둔)는 다시 저장하지
+    않아도 이 fallback 으로 분야 매칭이 작동한다.
+
+    industry_detail 의 표기가 `IT·소프트웨어` 든 `IT/소프트웨어` 든 정규화하여 매칭.
+    """
+    if not profile:
+        return []
+    tags = normalize_interest_tags(profile.get("interest_tags"))
+    if tags:
+        return tags
+    detail = profile.get("industry_detail") or ""
+    if not isinstance(detail, str):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for area in [s.strip() for s in detail.split(",") if s.strip()]:
+        for tag in _AREA_TO_TAGS_NORM.get(_norm_area_key(area), []):
+            if tag not in seen:
+                seen.add(tag)
+                out.append(tag)
+    return out
 
 
 def _load_profile(conn: sqlite3.Connection, user_id: int) -> Optional[dict]:
@@ -808,8 +865,9 @@ def compose_action_plan(
     raw_bt = (profile or {}).get("business_type") or "individual"
     bt: BusinessType = cast(BusinessType, raw_bt if raw_bt in ("individual", "corporate") else "individual")
 
-    # Step A: 사용자의 관심 분야 (멀티 선택). 미설정 사용자는 빈 list → 분야 점수 중립.
-    interest_tags = normalize_interest_tags((profile or {}).get("interest_tags"))
+    # Step A: 사용자의 관심 분야 — 별도 interest_tags 컬럼이 비어 있으면
+    # 업종 chip (industry_detail) 에서 자동 추론. 기존 사용자도 즉시 매칭 작동.
+    interest_tags = _infer_interest_tags_from_profile(profile)
 
     # ── 1단계: 모든 자격 통과 공고에 대해 light score ──
     scored: list[tuple] = []
