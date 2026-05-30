@@ -359,6 +359,11 @@ class Handler(BaseHTTPRequestHandler):
             ann_id_str = path[len("/api/announcements/"):-len("/auto-fetch")]
             self._handle_auto_fetch_post(ann_id_str)
             return
+        # 사이드 패널 — 단일 공고 가이드 (Step 2)
+        if path.startswith("/api/announcements/") and path.endswith("/guide"):
+            ann_id_str = path[len("/api/announcements/"):-len("/guide")]
+            self._handle_announcement_guide(ann_id_str)
+            return
         if path == "/api/upload":
             self._handle_upload()
             return
@@ -676,6 +681,45 @@ class Handler(BaseHTTPRequestHandler):
             return
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"가이드 생성 실패: {e}"}, status=500)
+            return
+        self._send_json(result)
+
+    def _handle_announcement_guide(self, ann_id_str: str) -> None:
+        """단일 공고에 대한 액션 가이드 — 사이드 패널의 가이드 탭.
+
+        POST /api/announcements/{ann_id}/guide
+        Body: { "force": bool? }   — true 면 캐시 무시
+        Response: { "sections":[...], "key_warning":"...", "picked_count":1,
+                    "cached":bool, "recommendation":{...}, "pdf_analyzed_count":int }
+        """
+        from planner.planner import generate_single_announcement_guide
+        from planner.analyzer.llm.base import LLMError
+
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            ann_id = int(ann_id_str)
+        except ValueError:
+            self._send_json({"error": "invalid announcement id"}, status=400)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8")) if raw else {}
+        except json.JSONDecodeError:
+            data = {}
+        use_cache = not bool(data.get("force"))
+        try:
+            result = generate_single_announcement_guide(user_id, ann_id, use_cache=use_cache)
+        except LLMError as e:
+            self._send_json({"error": f"LLM 호출 실패: {e}"}, status=502)
+            return
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": f"가이드 생성 실패: {e}"}, status=500)
+            return
+        if "error" in result:
+            self._send_json(result, status=404)
             return
         self._send_json(result)
 

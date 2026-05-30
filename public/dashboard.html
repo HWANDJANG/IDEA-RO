@@ -5902,6 +5902,7 @@ function renderAutoAnalysisBlock(data, annId) {
         <div class="aa-block-foot" style="border:none; padding-top:0;">
           <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId})">🚀 지금 분석 시작</button>
           <button class="aa-attach-btn" onclick="openAttachPdfByAnnId(${annId})">+ 내 자료 추가</button>
+          <button class="aa-attach-btn" onclick="openAnnPanel(${annId}, 'guide')" title="이 공고만의 가이드 + 질문">💬 가이드/질문</button>
         </div>
       </div>`;
   }
@@ -6048,6 +6049,7 @@ function renderAutoAnalysisBlock(data, annId) {
       <div class="aa-block-foot">
         <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId}, true)" title="다시 분석 (캐시 무시)">🔄 다시 분석</button>
         <button class="aa-attach-btn" onclick="openAttachPdfByAnnId(${annId})" title="공고 페이지에서 자동 수집되지 않은 자료 (사업계획서 초안 등) 를 추가">+ 내 자료 추가</button>
+        <button class="aa-attach-btn" onclick="openAnnPanel(${annId}, 'guide')" title="이 공고만의 가이드 + 질문">💬 가이드/질문</button>
         <span class="aa-block-hint">자동 수집이 안 됐거나 추가 자료가 있으면 직접 첨부할 수 있어요.</span>
       </div>
     </div>`;
@@ -9204,7 +9206,55 @@ function switchAnnPanelTab(name) {
   document.querySelectorAll(".ann-panel-pane").forEach(p => {
     p.classList.toggle("active", p.id === `ann-pane-${name}`);
   });
-  // Step 2~4 에서 각 탭 컨텐츠 lazy-load 트리거 추가 예정
+  // Lazy-load 트리거 — 이미 로드한 (annId, tab) 조합은 다시 안 부름
+  const annId = _annPanelCurrentId;
+  if (annId == null) return;
+  const key = `${annId}:${name}`;
+  if (_annPanelLoaded.get(key)) return;
+  if (name === "guide") {
+    _loadAnnPanelGuide(annId).then(() => _annPanelLoaded.set(key, true));
+  }
+  // chat: Step 3, analysis: Step 4 에서 추가
+}
+
+async function _loadAnnPanelGuide(annId, force = false) {
+  const pane = document.getElementById("ann-pane-guide");
+  if (!pane) return;
+  pane.innerHTML = `
+    <div class="ann-panel-placeholder">
+      <div class="ph-icon">✨</div>
+      <div>이 공고만의 액션 가이드 생성 중...<br><span style="opacity:0.6">PDF 분석을 포함하면 5~15초</span></div>
+    </div>`;
+  try {
+    const res = await fetch(`/api/announcements/${annId}/guide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force: !!force }),
+    });
+    if (res.status === 401) {
+      pane.innerHTML = `<div class="ann-panel-placeholder">
+        <div class="ph-icon">🔒</div>
+        <div>로그인이 필요합니다.</div></div>`;
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      pane.innerHTML = `<div class="ann-panel-placeholder">
+        <div class="ph-icon">⚠️</div>
+        <div>가이드 생성 실패: ${escapeHtml(data.error || res.statusText)}</div></div>`;
+      return;
+    }
+    // _renderPlanGuide 재사용 (plan-guide-wrap 마크업 그대로) + 다시 생성 버튼
+    const guideHtml = _renderPlanGuide(data, 1);
+    pane.innerHTML = guideHtml + `
+      <div style="margin-top:10px; text-align:right;">
+        <button class="aa-attach-btn" onclick="_loadAnnPanelGuide(${annId}, true)" title="LLM 다시 호출 (캐시 무시)">🔄 다시 생성</button>
+      </div>`;
+  } catch (e) {
+    pane.innerHTML = `<div class="ann-panel-placeholder">
+      <div class="ph-icon">⚠️</div>
+      <div>네트워크 오류: ${escapeHtml(e.message || String(e))}</div></div>`;
+  }
 }
 
 // 공고 메타를 현재 페이지에 캐시된 곳들에서 찾기 (id, title, source 등)

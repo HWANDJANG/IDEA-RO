@@ -692,6 +692,141 @@ def generate_action_guide(
     }
 
 
+# ─── 단일 공고 가이드 — 사이드 패널에서 호출 (자격 미통과 공고도 OK) ────
+#
+# generate_action_guide(user_id, plan, picked_ids) 가 plan dict + picked_ids 구조라,
+# 1건짜리 plan 을 in-memory 로 만들어서 그대로 호출. 자격 통과 여부 무관 (사용자가
+# "관심 생긴 공고" 라면 자격 안 되더라도 어떻게 준비할지 가이드 받고 싶을 수 있음).
+
+def _build_single_recommendation(conn: sqlite3.Connection, ann_id: int, user_id: int) -> Optional[dict]:
+    """공고 1건 → recommendation dict (compose_action_plan 의 Top N detail 형태와 동일)."""
+    row = conn.execute(
+        "SELECT a.id, a.title, a.start_date, a.end_date, a.d_day, "
+        "       a.department, a.contact, a.detail_url, a.content_text, a.raw_meta, "
+        "       s.code AS source_code, s.name AS source_name "
+        "FROM announcements a JOIN sources s ON s.id = a.source_id "
+        "WHERE a.id=?",
+        (ann_id,),
+    ).fetchone()
+    if not row:
+        return None
+    a = dict(row)
+    profile = _load_profile(conn, user_id)
+    my_docs = _load_my_docs(conn, user_id)
+    raw_bt = (profile or {}).get("business_type") or "individual"
+    bt: BusinessType = cast(BusinessType, raw_bt if raw_bt in ("individual", "corporate") else "individual")
+    today = date.today()
+    raw_meta = _parse_raw_meta(a.get("raw_meta"))
+
+    # 자격 점수 계산 (정보용 — 통과 여부 체크 안 함)
+    fit = compute_profile_fit(profile, raw_meta, today)
+    days_left = _days_until(a.get("end_date"), today) or 0
+    type_info = classify_announcement_type(raw_meta, a.get("source_code"), a.get("title"))
+    won, amt_display = _extract_amount_won(a.get("content_text"), raw_meta)
+    amount_score = _amount_to_score(won)
+
+    # 서류 매칭 (마감일 필요)
+    deadline = None
+    try:
+        deadline = date.fromisoformat(str(a["end_date"])[:10])
+    except (ValueError, TypeError):
+        deadline = today
+    try:
+        mr = match_announcement(
+            announcement_id=a["id"], title=a["title"], deadline=deadline,
+            content_text=a.get("content_text"), business_type=bt,
+            user_documents=my_docs,
+        )
+    except Exception:  # noqa: BLE001
+        mr = None
+
+    missing_docs: list[str] = []
+    expiring_docs: list[str] = []
+    expired_docs: list[str] = []
+    fulfilled_docs: list[str] = []
+    issue_tasks: list[dict] = []
+    summary = {"fulfilled": 0, "expiring": 0, "expired": 0, "missing": 0}
+    req_doc_count = 0
+    if mr:
+        for d in mr.get("required_docs", []):
+            st = d.get("holding_status")
+            name = d.get("name") or ""
+            if st == "missing": missing_docs.append(name)
+            elif st == "expiring_soon": expiring_docs.append(name)
+            elif st == "expired": expired_docs.append(name)
+            elif st in ("valid", "no_expiry"): fulfilled_docs.append(name)
+        for t in mr.get("tasks", []):
+            if isinstance(t, dict): issue_tasks.append(_serialize_task(t))
+        summary = mr.get("summary", summary)
+        req_doc_count = len(mr.get("required_docs", []))
+
+    effort_score = _estimate_effort(req_doc_count, type_info["code"])
+    interest_tags = _infer_interest_tags_from_profile(profile)
+    industry_fit = compute_industry_fit(
+        interest_tags, title=a.get("title"),
+        content_text=a.get("content_text"), raw_meta=raw_meta,
+    )
+
+    return {
+        "announcement_id": a["id"],
+        "title":           a["title"],
+        "source_code":     a.get("source_code"),
+        "source_name":     a.get("source_name"),
+        "department":      a.get("department"),
+        "detail_url":      a.get("detail_url"),
+        "start_date":      a.get("start_date"),
+        "end_date":        a.get("end_date"),
+        "d_day":           a.get("d_day"),
+        "days_left":       days_left,
+        "type":            type_info,
+        "profile_fit":     fit,
+        "signals": {
+            "profile":        int(fit["score"]),
+            "urgency":        30 if days_left <= 7 else (20 if days_left <= 14 else (10 if days_left <= 30 else 0)),
+            "amount":         amount_score,
+            "effort":         effort_score,
+            "effort_label":   _effort_label(effort_score),
+            "industry":       industry_fit["score"],
+            "industry_tags":  industry_fit["matched_tags"],
+            "industry_hits":  industry_fit["hit_keywords"],
+            "amount_won":     won,
+            "amount_display": amt_display,
+            "req_doc_count":  req_doc_count,
+        },
+        "fulfillment":    mr.get("fulfillment") if mr else None,
+        "summary":        summary,
+        "fulfilled_docs": fulfilled_docs,
+        "missing_docs":   missing_docs,
+        "expiring_docs":  expiring_docs,
+        "expired_docs":   expired_docs,
+        "issue_tasks":    issue_tasks,
+    }
+
+
+def generate_single_announcement_guide(
+    user_id: int, ann_id: int, *, use_cache: bool = True,
+) -> dict:
+    """공고 1건에 대한 액션 가이드. generate_action_guide 를 1건짜리 plan 으로 호출.
+
+    Returns: {"sections": [...], "key_warning": "...", "picked_count": 1, "cached": bool,
+              "recommendation": {...}}  — recommendation 은 프론트에서 메타 표시용
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rec = _build_single_recommendation(conn, ann_id, user_id)
+    finally:
+        conn.close()
+    if not rec:
+        return {"sections": [], "key_warning": "", "picked_count": 0, "cached": False, "error": "공고를 찾을 수 없습니다"}
+    # 1건짜리 plan 으로 generate_action_guide 호출 — 캐시 키도 picked_ids=[ann_id] 로
+    # 자연스럽게 격리되어 plan 전체 가이드와 충돌 안 함.
+    plan = {"recommendations": [rec]}
+    out = generate_action_guide(user_id, plan, [ann_id], use_cache=use_cache)
+    out["recommendation"] = rec
+    return out
+
+
 # compute_profile_fit / match_announcement 가 보는 핵심 필드만.
 _PLAN_PROFILE_FIELDS = (
     "business_type", "establishment_date", "region", "industry",
