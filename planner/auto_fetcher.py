@@ -33,10 +33,10 @@ from planner.attach_fetcher import (
 )
 
 
-# 자동 분석을 시도할 확장자 (Step 1+2 의 분석 커버리지와 동일)
-_AUTO_ANALYZE_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".hwpx")
+# 자동 분석을 시도할 확장자 (Step 1+2 의 분석 커버리지 + HWP 추가)
+_AUTO_ANALYZE_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".hwpx", ".hwp")
 # 명시적으로 unsupported 로 기록할 확장자 (사용자에게 "지원 안 됨" 표시)
-_KNOWN_UNSUPPORTED_EXTS = (".hwp", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".alz")
+_KNOWN_UNSUPPORTED_EXTS = (".doc", ".docx", ".xls", ".xlsx", ".zip", ".alz")
 
 _MAX_FILE_BYTES = 25 * 1024 * 1024   # 25MB — Gemini Vision/PDF 한계 고려
 
@@ -50,6 +50,8 @@ def _detect_format(filename: str) -> Optional[str]:
         return "image"
     if n.endswith(".hwpx"):
         return "hwpx"
+    if n.endswith(".hwp"):
+        return "hwp"
     return None
 
 
@@ -74,6 +76,12 @@ def _check_format_magic(fmt: str, data: bytes, content_type: Optional[str]) -> O
         # HWPX 는 ZIP 컨테이너 — PK\x03\x04 또는 PK\x05\x06 시작
         if not (data.startswith(b"PK\x03\x04") or data.startswith(b"PK\x05\x06")):
             return f"not a valid HWPX/ZIP (magic={data[:8]!r}, content-type={content_type})"
+        return None
+
+    if fmt == "hwp":
+        # HWP5 는 OLE2 Compound Document — D0 CF 11 E0 A1 B1 1A E1 매직
+        if not data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+            return f"not a valid HWP/OLE2 (magic={data[:8]!r}, content-type={content_type})"
         return None
 
     if fmt == "image":

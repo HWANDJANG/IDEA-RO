@@ -436,6 +436,9 @@ def analyze_attachment(
     is_pdf  = (mt == "application/pdf") or name.endswith(".pdf")
     is_image = mt.startswith("image/") or any(name.endswith(e) for e in (".jpg", ".jpeg", ".png", ".webp"))
     is_hwpx = name.endswith(".hwpx") or "hwp+xml" in mt or "hwpx" in mt
+    # HWP (구형) — pyhwp 의 hwp5txt 로 텍스트 추출 후 텍스트 분석. HWPX 보다 후순위 매칭.
+    is_hwp = (name.endswith(".hwp") and not name.endswith(".hwpx")) or \
+             ("hwp" in mt and "hwp+xml" not in mt and "hwpx" not in mt)
 
     if is_pdf:
         return analyze_pdf(
@@ -467,6 +470,21 @@ def analyze_attachment(
             original_filename=original_filename,
             source_type="hwpx",
             source_ext=".hwpx",
+            provider=provider,
+            use_cache=use_cache,
+        )
+    if is_hwp:
+        from .hwp_extractor import extract_hwp_text
+        try:
+            text = extract_hwp_text(file_bytes)
+        except ValueError as e:
+            raise LLMError(f"HWP 파싱 실패: {e}") from e
+        return analyze_text(
+            file_bytes,
+            text,
+            original_filename=original_filename,
+            source_type="hwp",
+            source_ext=".hwp",
             provider=provider,
             use_cache=use_cache,
         )

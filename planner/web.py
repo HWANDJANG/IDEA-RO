@@ -842,10 +842,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         filename = (file_field.filename or "uploaded.pdf").strip()
         name_lower = filename.lower()
-        allowed_exts = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".hwpx")
+        allowed_exts = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".hwpx", ".hwp")
         if not name_lower.endswith(allowed_exts):
             self._send_json({
-                "error": "PDF / JPG / PNG / WEBP / HWPX 파일만 지원합니다",
+                "error": "PDF / JPG / PNG / WEBP / HWPX / HWP 파일만 지원합니다",
             }, status=415)
             return
         # 클라이언트가 보내준 MIME (multipart 의 Content-Type) — 없으면 None 으로 dispatcher 에 위임

@@ -1399,7 +1399,12 @@
     padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;
   }
   .aa-file-sub { color: var(--muted); font-size: 11px; flex-shrink: 0; }
-  .aa-file-fail { color: #B91C1C; }
+  .aa-file-ok   { color: #047857; font-weight: 600; }
+  .aa-file-hint { color: #B45309; }
+  .aa-file-fail { color: #B91C1C; font-weight: 600; }
+  .aa-file-status { font-size: 12px; flex-shrink: 0; }
+  .aa-file-skipped { background: #FFFBEB; }
+  .aa-file-failed  { background: #FEF2F2; }
   .aa-block-foot {
     margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(0,0,0,0.08);
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -5662,18 +5667,58 @@ function renderAutoAnalysisBlock(data, annId) {
   const totalObligations    = done.reduce((s,x) => s + ((x.analysis?.obligations?.items   || []).length), 0);
   const totalWarnings       = done.reduce((s,x) => s + ((x.analysis?.warnings?.items      || []).length), 0);
 
+  // 포맷별 아이콘 매핑 — 어떤 파일이 분석에 들어갔는지 직관적으로
+  const FMT_ICON = { pdf: "📄", image: "🖼️", hwpx: "📋", hwp: "📝" };
+  const FMT_LABEL = { pdf: "PDF", image: "이미지", hwpx: "HWPX", hwp: "HWP" };
+
+  // 파일명에서 확장자 추출 → 미지원 포맷도 보조 라벨 보여줌
+  const _extFromName = (name) => {
+    const m = (name || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+    return m ? m[1] : "";
+  };
+  const UNSUPPORTED_HINT = {
+    doc: "DOC → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
+    docx: "DOCX → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
+    xls: "XLS → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
+    xlsx: "XLSX → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
+    zip: "ZIP → 압축 풀어 안의 PDF/HWP/HWPX 를 + 내 자료 추가 로 올려주세요",
+    alz: "ALZ → 압축 풀어 안의 PDF/HWP/HWPX 를 + 내 자료 추가 로 올려주세요",
+  };
+
   const fileListHtml = attachments.map(x => {
-    const ico = x.status === "done" ? "✅" : (x.status === "skipped" ? "⏭️" : "❌");
-    const fmt = x.file_format ? ` <span class="aa-file-fmt">${escapeHtml(x.file_format.toUpperCase())}</span>` : "";
-    const sub = x.status === "done"
-      ? `<span class="aa-file-sub">분석 완료</span>`
-      : x.status === "skipped"
-        ? `<span class="aa-file-sub">${escapeHtml(x.skipped_reason === "unsupported_format" ? "지원하지 않는 형식 (HWP 등)" : (x.skipped_reason || "건너뜀"))}</span>`
-        : `<span class="aa-file-sub aa-file-fail">${escapeHtml((x.error_message || "다운로드/분석 실패").slice(0,80))}</span>`;
+    const ext = _extFromName(x.original_filename);
+    const fmtIcon = FMT_ICON[x.file_format] || (UNSUPPORTED_HINT[ext] ? "📦" : "📎");
+    const fmtLabel = FMT_LABEL[x.file_format] || (ext ? ext.toUpperCase() : "");
+    const fmtBadge = fmtLabel ? ` <span class="aa-file-fmt">${escapeHtml(fmtLabel)}</span>` : "";
+
+    let sub;
+    if (x.status === "done") {
+      // 분석 카테고리별 카운트 (mount summary 가 아닌 파일 단위)
+      const a = x.analysis || {};
+      const counts = [];
+      const e = (a.eligibility?.items || []).length; if (e) counts.push(`자격${e}`);
+      const sc = (a.schedule?.items || []).length;    if (sc) counts.push(`일정${sc}`);
+      const sa = (a.support_amount?.items || []).length; if (sa) counts.push(`지원금${sa}`);
+      const rd = (a.required_docs?.items || []).length;  if (rd) counts.push(`서류${rd}`);
+      const ev = (a.evaluation?.items || []).length;     if (ev) counts.push(`평가${ev}`);
+      const ob = (a.obligations?.items || []).length;    if (ob) counts.push(`의무${ob}`);
+      const wn = (a.warnings?.items || []).length;       if (wn) counts.push(`유의${wn}`);
+      const countText = counts.length ? counts.join(" · ") : "내용 없음";
+      sub = `<span class="aa-file-sub aa-file-ok">${escapeHtml(countText)}</span>`;
+    } else if (x.status === "skipped") {
+      const hint = UNSUPPORTED_HINT[ext];
+      sub = hint
+        ? `<span class="aa-file-sub aa-file-hint" title="${escapeHtml(hint)}">⚠ ${escapeHtml(hint)}</span>`
+        : `<span class="aa-file-sub">${escapeHtml(x.skipped_reason || "건너뜀")}</span>`;
+    } else {
+      sub = `<span class="aa-file-sub aa-file-fail" title="${escapeHtml(x.error_message || '')}">분석 실패</span>`;
+    }
+    const statusIcon = x.status === "done" ? "✅" : (x.status === "skipped" ? "⏭️" : "❌");
     return `
-      <div class="aa-file">
-        <span class="aa-file-ico">${ico}</span>
-        <span class="aa-file-name">${escapeHtml(x.original_filename || "")}</span>${fmt}
+      <div class="aa-file aa-file-${x.status}">
+        <span class="aa-file-ico" title="${escapeHtml(fmtLabel)}">${fmtIcon}</span>
+        <span class="aa-file-name">${escapeHtml(x.original_filename || "")}</span>${fmtBadge}
+        <span class="aa-file-status" title="${x.status}">${statusIcon}</span>
         ${sub}
       </div>`;
   }).join("");

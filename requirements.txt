@@ -4,6 +4,8 @@ requests>=2.31
 beautifulsoup4>=4.12
 # Attachment analysis (M3-B) needs pymupdf for PDF text extraction.
 pymupdf>=1.24
+# HWP (구형, HWP5/OLE2) 텍스트 추출용 — hwp5txt CLI 가 함께 설치됨.
+pyhwp>=0.1b15
 # At least one LLM provider must be installed.
 # Choose the one matching your LLM_PROVIDER env var.
 anthropic>=0.50
