@@ -3424,6 +3424,17 @@
   .cmp-grid .cmp-cell.col-head a:hover {
     color: var(--primary); border-bottom-color: var(--primary);
   }
+  .cmp-grid .cmp-cell.col-head .cmp-col-panel-btn {
+    display: inline-block; margin-top: 8px;
+    padding: 4px 9px; border-radius: 999px;
+    background: white; border: 1px solid var(--border-strong);
+    color: var(--text); font-size: 11px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .cmp-grid .cmp-cell.col-head .cmp-col-panel-btn:hover {
+    background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  }
   .cmp-dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
     margin-right: 4px; vertical-align: 1px;
@@ -6759,7 +6770,7 @@ function _buildCompareHtml(picks) {
     }),
   });
 
-  // 매트릭스 헤더 (열 = 공고 카드)
+  // 매트릭스 헤더 (열 = 공고 카드) — 우상단에 "💬" 버튼으로 사이드 패널 진입
   const headerCells = picks.map(p => {
     const a = p.announcement;
     const titleH = a.detail_url
@@ -6768,6 +6779,8 @@ function _buildCompareHtml(picks) {
     return `<div class="cmp-cell col-head">
       <span class="cmp-src">${escapeHtml(a.source_name || a.source_code || "")}</span>
       ${titleH}
+      <button class="cmp-col-panel-btn" onclick="openAnnPanel(${a.id}, 'guide')"
+        title="이 공고만 따로 가이드/질문하기">💬 가이드/질문</button>
     </div>`;
   }).join("");
 
