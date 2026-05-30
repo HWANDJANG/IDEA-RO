@@ -1424,6 +1424,59 @@
   }
   .aa-attach-btn:hover { background: var(--bg-subtle); color: var(--text); border-color: var(--muted); }
 
+  /* B-2: 추출된 일정 리스트 + 캘린더 등록 버튼 */
+  .aa-events-section {
+    margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(0,0,0,0.08);
+  }
+  .aa-events-head {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-weight: 700; font-size: 12.5px; color: #C2410C; margin-bottom: 8px;
+  }
+  .aa-events-count { font-weight: 500; font-size: 11px; color: var(--muted); }
+  .aa-events-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+  .aa-cal-btn {
+    border: 1px solid var(--border); background: white;
+    padding: 4px 9px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    cursor: pointer; color: var(--text);
+  }
+  .aa-cal-btn:hover { background: var(--bg-subtle); }
+  .aa-cal-google { border-color: #4285F4; color: #4285F4; }
+  .aa-cal-google:hover { background: #EFF6FF; }
+  .aa-cal-naver  { border-color: #03C75A; color: #03C75A; }
+  .aa-cal-naver:hover  { background: #ECFDF5; }
+  .aa-events-list {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .aa-event {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px; background: white; border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  .aa-event.urgent { background: #FEF2F2; border-color: #FECACA; }
+  .aa-event.soon   { background: #FFFBEB; border-color: #FDE68A; }
+  .aa-event.past   { opacity: 0.55; }
+  .aa-event-icon { flex-shrink: 0; font-size: 14px; }
+  .aa-event-body { flex: 1; min-width: 0; }
+  .aa-event-title {
+    font-size: 12px; color: var(--text); font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .aa-event-type {
+    display: inline-block; background: rgba(217, 82, 26, 0.10); color: #C2410C;
+    padding: 0 6px; border-radius: 4px; font-size: 10.5px; margin-right: 4px;
+  }
+  .aa-event-date {
+    font-size: 11px; color: var(--muted); margin-top: 2px;
+  }
+  .aa-event-dd {
+    display: inline-block; padding: 0 6px; border-radius: 999px;
+    font-weight: 700; font-size: 10px; margin-left: 4px;
+    background: var(--bg-subtle); color: var(--muted);
+  }
+  .aa-event-dd.urgent { background: #FEE2E2; color: #B91C1C; }
+  .aa-event-dd.soon   { background: #FEF3C7; color: #B45309; }
+  .aa-event-dd.past   { background: var(--bg-subtle); color: var(--muted); }
+
   /* 공고 둘러보기 — Phase 2: 모드 토글 (전체 목록 vs 자격 맞춤) */
   .browse-mode-toggle {
     display: inline-flex; gap: 4px;
@@ -5734,6 +5787,56 @@ function renderAutoAnalysisBlock(data, annId) {
       ${totalWarnings       ? `<span class="aa-stat aa-stat-warn">유의 ${totalWarnings}</span>` : ""}
     </div>` : "";
 
+  // B-2: 추출된 일정 리스트 (모집기간/발표/평가/사업기간/계약/기타) — 캘린더 등록 가능
+  const events = data.extracted_events || [];
+  const TYPE_ICON = {
+    recruitment_period: "📥", announcement_date: "📢", evaluation_date: "⚖️",
+    business_period: "🏗️", contract_date: "📝", other: "📌",
+  };
+  const TYPE_LABEL = {
+    recruitment_period: "모집기간", announcement_date: "발표일",
+    evaluation_date: "평가", business_period: "사업기간",
+    contract_date: "계약", other: "일정",
+  };
+  let eventsHtml = "";
+  if (events.length > 0) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const rowHtml = events.map(ev => {
+      const ds = (ev.date_start || "").slice(0,10);
+      const de = ev.date_end ? ev.date_end.slice(0,10) : "";
+      const isRange = de && de !== ds;
+      const tm = ev.time ? ` ${ev.time}` : "";
+      const days = ds ? Math.floor((new Date(ds) - today) / 86400000) : null;
+      const ddCls = days === null ? "" : (days < 0 ? "past" : (days <= 7 ? "urgent" : (days <= 30 ? "soon" : "")));
+      const ddText = days === null ? "" : (days < 0 ? `D+${-days}` : (days === 0 ? "오늘" : `D-${days}`));
+      const icon = TYPE_ICON[ev.type] || "📌";
+      const label = TYPE_LABEL[ev.type] || "일정";
+      const title = ev.title || label;
+      return `
+        <div class="aa-event ${ddCls}">
+          <span class="aa-event-icon">${icon}</span>
+          <div class="aa-event-body">
+            <div class="aa-event-title"><span class="aa-event-type">${label}</span> ${escapeHtml(title)}</div>
+            <div class="aa-event-date">${ds}${isRange ? ` ~ ${de}` : ""}${tm} ${ddText ? `<span class="aa-event-dd ${ddCls}">${ddText}</span>` : ""}</div>
+          </div>
+        </div>`;
+    }).join("");
+    eventsHtml = `
+      <div class="aa-events-section">
+        <div class="aa-events-head">
+          📅 추출된 일정 <span class="aa-events-count">${events.length}건</span>
+          <span class="aa-events-actions">
+            <button class="aa-cal-btn aa-cal-google" onclick='_addExtractedEventsToCalendar(${annId}, "google")' title="이 공고의 모든 일정을 Google 캘린더에 등록">🗓️ Google 등록</button>
+            <button class="aa-cal-btn aa-cal-naver"  onclick='_addExtractedEventsToCalendar(${annId}, "naver")'  title="이 공고의 모든 일정을 Naver 캘린더에 등록">N 네이버 등록</button>
+          </span>
+        </div>
+        <div class="aa-events-list">${rowHtml}</div>
+      </div>`;
+    // 다음 호출에서 이벤트 데이터 재사용 (캘린더 등록 시)
+    window._aaEventsByAnn = window._aaEventsByAnn || {};
+    window._aaEventsByAnn[annId] = { events, title: data.title || "" };
+  }
+
   return `
     <div class="aa-block">
       <div class="aa-block-head">
@@ -5742,12 +5845,51 @@ function renderAutoAnalysisBlock(data, annId) {
       </div>
       ${statsHtml}
       <div class="aa-files">${fileListHtml}</div>
+      ${eventsHtml}
       <div class="aa-block-foot">
         <button class="aa-trigger-btn" onclick="triggerAutoFetchForAnnouncement(${annId}, true)" title="다시 분석 (캐시 무시)">🔄 다시 분석</button>
         <button class="aa-attach-btn" onclick="openAttachPdfByAnnId(${annId})" title="공고 페이지에서 자동 수집되지 않은 자료 (사업계획서 초안 등) 를 추가">+ 내 자료 추가</button>
         <span class="aa-block-hint">자동 수집이 안 됐거나 추가 자료가 있으면 직접 첨부할 수 있어요.</span>
       </div>
     </div>`;
+}
+
+// 추출된 일정 전체를 외부 캘린더에 등록 (기존 _pushEventsToProvider 헬퍼 재사용)
+async function _addExtractedEventsToCalendar(annId, provider) {
+  const stash = (window._aaEventsByAnn || {})[annId];
+  if (!stash || !stash.events || !stash.events.length) {
+    alert("등록할 일정이 없어요.");
+    return;
+  }
+  // 카드 데이터에서 공고 제목 가져오기 — DOM 의 data-ann-id 매칭
+  const card = document.querySelector(`#announcements-list .announcement-card[data-ann-id="${annId}"]`);
+  const titleEl = card ? card.querySelector(".a-title, .a-title-link") : null;
+  const annTitle = titleEl ? titleEl.textContent.trim() : "";
+  const TYPE_ICON = {
+    recruitment_period: "📥", announcement_date: "📢", evaluation_date: "⚖️",
+    business_period: "🏗️", contract_date: "📝", other: "📌",
+  };
+  const TYPE_LABEL = {
+    recruitment_period: "모집기간", announcement_date: "발표일",
+    evaluation_date: "평가", business_period: "사업기간",
+    contract_date: "계약", other: "일정",
+  };
+  const events = stash.events.map(ev => {
+    const ds = (ev.date_start || "").slice(0,10);
+    const de = ev.date_end ? ev.date_end.slice(0,10) : ds;
+    const icon = TYPE_ICON[ev.type] || "📌";
+    const label = TYPE_LABEL[ev.type] || "일정";
+    const title = ev.title || label;
+    return {
+      summary: `${icon} [${label}] ${title} (${annTitle})`,
+      description: `공고: ${annTitle}\n일정: ${ds}${de !== ds ? ` ~ ${de}` : ""}${ev.time ? ` ${ev.time}` : ""}\n` +
+        ((ev.source_files && ev.source_files.length) ? `출처: ${ev.source_files.join(", ")}\n` : ""),
+      date_start: ds,
+      date_end: de,
+      time: ev.time || null,
+    };
+  });
+  await _pushEventsToProvider(events, provider);
 }
 
 async function triggerAutoFetchForAnnouncement(annId, force) {

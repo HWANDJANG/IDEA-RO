@@ -682,25 +682,39 @@ class Handler(BaseHTTPRequestHandler):
         """공고에 대해 이미 자동 수집/분석된 첨부 목록 조회 (트리거 X, 캐시만).
 
         GET /api/announcements/{ann_id}/auto-attachments
-        Response: { "announcement_id": int, "attachments": [...], "count": int }
+        Response: {
+          "announcement_id": int,
+          "attachments":     [...],   # 자동 수집 첨부 목록 (status + 분석 결과)
+          "extracted_events": [...],  # 사용자 첨부 + 자동 합본에서 추출된 일정
+          "count":           int,
+        }
         """
         from planner.auto_fetcher import list_auto_attachments
+        from planner.planner import _load_extracted_events_for_announcement
 
-        # 로그인 안 해도 조회는 허용 (공고는 public)
         try:
             ann_id = int(ann_id_str)
         except ValueError:
             self._send_json({"error": "ann_id must be integer"}, status=400)
             return
+        # 로그인 안 해도 조회는 허용 — user_id None 이면 자동 fetch 만 합산.
+        user_id = self._current_user_id()
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         try:
             attachments = list_auto_attachments(conn, ann_id, include_analysis=True)
+            try:
+                extracted_events = _load_extracted_events_for_announcement(
+                    conn, ann_id, user_id=(user_id or 0),
+                )
+            except Exception:
+                extracted_events = []
         finally:
             conn.close()
         self._send_json({
             "announcement_id": ann_id,
             "attachments":     attachments,
+            "extracted_events": extracted_events,
             "count":           len(attachments),
         })
 
@@ -744,6 +758,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 self._send_json({"error": f"auto-fetch 실패: {e}"}, status=500)
                 return
+            # 응답 구조 통일: GET /auto-attachments 와 동일하게 extracted_events 포함
+            try:
+                from planner.planner import _load_extracted_events_for_announcement
+                result["extracted_events"] = _load_extracted_events_for_announcement(
+                    conn, ann_id, user_id=user_id,
+                )
+            except Exception:
+                result["extracted_events"] = []
         finally:
             conn.close()
         self._send_json(result)
@@ -1727,18 +1749,35 @@ class Handler(BaseHTTPRequestHandler):
                 f"WHERE a.id IN ({placeholders})",
                 announcement_ids,
             )}
-            # 공고별 첨부 PDF 조회 (해당 사용자의 폴더에서)
+            # 공고별 첨부 PDF 조회 — 사용자 직접 첨부 + 자동 fetch 합본 (Step 5 와 동일 패턴).
             attach_by_ann: dict[int, list[dict]] = {aid: [] for aid in announcement_ids}
-            rows = conn.execute(
+            # 1) 사용자 직접 첨부 (해당 사용자의 폴더만)
+            for r in conn.execute(
                 f"SELECT u.file_hash, u.original_filename, f.announcement_id "
                 f"FROM uploaded_attachments u "
                 f"JOIN attachment_folders f ON f.id = u.folder_id "
                 f"WHERE u.user_id=? AND f.announcement_id IN ({placeholders}) "
                 f"ORDER BY u.uploaded_at",
                 [user_id, *announcement_ids],
-            )
-            for r in rows:
+            ):
                 attach_by_ann.setdefault(r["announcement_id"], []).append(dict(r))
+            # 2) 자동 fetch (시스템 공유) — file_hash 로 dedup
+            seen_by_ann: dict[int, set[str]] = {
+                aid: {at["file_hash"] for at in attach_by_ann.get(aid, [])}
+                for aid in announcement_ids
+            }
+            for r in conn.execute(
+                f"SELECT file_hash, original_filename, announcement_id "
+                f"FROM announcement_auto_attachments "
+                f"WHERE announcement_id IN ({placeholders}) "
+                f"  AND status='done' AND file_hash IS NOT NULL",
+                announcement_ids,
+            ):
+                aid = r["announcement_id"]
+                if r["file_hash"] in seen_by_ann.get(aid, set()):
+                    continue
+                seen_by_ann.setdefault(aid, set()).add(r["file_hash"])
+                attach_by_ann.setdefault(aid, []).append(dict(r))
         finally:
             conn.close()
 
