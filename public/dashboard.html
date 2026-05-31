@@ -683,6 +683,26 @@
   .cal-legend .leg-action:disabled {
     background: var(--bg-subtle); color: var(--muted); cursor: not-allowed;
   }
+  /* 라벨 숨김 [×] 버튼 */
+  .cal-legend .leg-action.hide {
+    background: transparent; color: var(--muted);
+    width: 20px; font-size: 13px;
+  }
+  .cal-legend .leg-action.hide:hover {
+    background: #FEF2F2; color: #991B1B; border-color: #FCA5A5;
+  }
+  /* 숨긴 공고 복원 */
+  .cal-legend .leg-action.restore {
+    width: auto; padding: 0 9px; font-size: 10.5px;
+    background: white; color: var(--accent); border: 1px solid var(--accent);
+  }
+  .cal-legend .leg-action.restore:hover { background: var(--accent-soft); }
+  .cal-legend .leg-hidden-summary {
+    background: var(--bg-subtle);
+    color: var(--muted);
+    border-style: dashed;
+  }
+  .cal-legend .leg-hidden-summary b { color: var(--text); }
   .cal-export { display: flex; gap: 6px; align-items: center; }
 
   /* 외부 캘린더 등록 일정 (취소 가능) */
@@ -9628,6 +9648,77 @@ function parseISODate(s) {
   return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
 }
 
+// ─── 캘린더 — 카테고리(공고 폴더) 숨김 토글 ───────────────────────
+// 영구 삭제가 아니라 사용자별 표시 토글. localStorage 저장 (DB 미수정).
+const _CAL_HIDDEN_KEY = "cal_hidden_folder_ids";
+
+function _getHiddenFolderIds() {
+  try {
+    const raw = localStorage.getItem(_CAL_HIDDEN_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(Number).filter(Number.isFinite) : []);
+  } catch (_) { return new Set(); }
+}
+function _setHiddenFolderIds(setLike) {
+  try {
+    localStorage.setItem(_CAL_HIDDEN_KEY, JSON.stringify(Array.from(setLike)));
+  } catch (_) {}
+}
+
+function _hideCalFolder(folderId) {
+  const s = _getHiddenFolderIds();
+  s.add(parseInt(folderId, 10));
+  _setHiddenFolderIds(s);
+  // 선택 상태도 정리 (숨긴 폴더의 이벤트가 선택돼 있으면 해제)
+  for (const ev of (CAL_DATA.events || [])) {
+    if (ev.folder_id === folderId && CAL_SELECTED.has(ev.id)) CAL_SELECTED.delete(ev.id);
+  }
+  renderCalendar();
+}
+
+function _unhideCalFolder(folderId) {
+  const s = _getHiddenFolderIds();
+  s.delete(parseInt(folderId, 10));
+  _setHiddenFolderIds(s);
+  renderCalendar();
+}
+
+function _unhideAllCalFolders() {
+  if (!confirm("숨긴 공고 모두 다시 보이게 할까요?")) return;
+  _setHiddenFolderIds(new Set());
+  renderCalendar();
+}
+
+function _showHiddenFoldersPanel() {
+  const hiddenSet = _getHiddenFolderIds();
+  const hiddenFolders = (CAL_DATA.folders || []).filter(f => hiddenSet.has(f.id));
+  if (!hiddenFolders.length) return;
+  // 간단한 prompt 대신 모달 — 현재 day-popover 재사용
+  const pop = document.getElementById("day-popover");
+  const head = document.getElementById("day-popover-head");
+  const body = document.getElementById("day-popover-body");
+  if (!pop || !head || !body) return;
+  head.textContent = `🔁 숨긴 공고 ${hiddenFolders.length}건`;
+  body.innerHTML = hiddenFolders.map(f => `
+    <div style="display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed rgba(0,0,0,0.06);">
+      <span style="flex:1; min-width:0; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      <button class="leg-action restore" onclick="_unhideCalFolder(${f.id}); _closeDayPopup();">복원</button>
+    </div>
+  `).join("");
+  // 화면 중앙에 띄움
+  pop.style.left = "50%";
+  pop.style.top = "20%";
+  pop.style.transform = "translateX(-50%)";
+  pop.classList.add("show");
+  _dayPopoverOpen = true;
+}
+
+function _closeDayPopup() {
+  document.getElementById("day-popover")?.classList.remove("show");
+  _dayPopoverOpen = false;
+}
+
 async function loadCalendar() {
   try {
     const res = await fetch("/api/schedule/all");
@@ -9690,9 +9781,12 @@ function renderCalendar() {
   const label = document.getElementById("cal-month-label");
   label.textContent = `${CAL_VIEW.getFullYear()}년 ${CAL_VIEW.getMonth() + 1}월`;
 
-  // 범례 + 카테고리별 일괄 추가 액션 ([+G] [+N])
+  // 범례 + 카테고리별 일괄 추가 액션 ([+G] [+N]) + 숨김 [×]
+  // 숨김 폴더는 캘린더 그리드 + 라벨에서 제외 (localStorage 영구 보관, 영구 삭제 X)
+  const hiddenSet = _getHiddenFolderIds();
   const legend = document.getElementById("cal-legend");
-  legend.innerHTML = (CAL_DATA.folders || []).map(f => {
+  const visibleFolders = (CAL_DATA.folders || []).filter(f => !hiddenSet.has(f.id));
+  legend.innerHTML = visibleFolders.map(f => {
     const idx = CAL_FOLDER_COLOR.get(f.id) || 0;
     const c = CAL_PALETTE[idx];
     const cnt = (CAL_DATA.events || []).filter(ev => ev.folder_id === f.id).length;
@@ -9704,13 +9798,28 @@ function renderCalendar() {
         onclick="addCategoryToCalendar(${f.id}, 'google')" ${cnt === 0 ? 'disabled' : ''}>G</button>
       <button class="leg-action ncal" title="이 카테고리 ${cnt}건 전부 네이버 캘린더에 추가"
         onclick="addCategoryToCalendar(${f.id}, 'naver')" ${cnt === 0 ? 'disabled' : ''}>N</button>
+      <button class="leg-action hide" title="이 공고를 캘린더에서 숨기기 (영구 삭제 X)"
+        onclick="_hideCalFolder(${f.id})">×</button>
     </span>`;
   }).join("") || `<span class="ac-meta">아직 폴더 없음</span>`;
 
+  // 숨긴 공고가 있으면 "복원" 버튼 추가
+  const hiddenFolders = (CAL_DATA.folders || []).filter(f => hiddenSet.has(f.id));
+  if (hiddenFolders.length) {
+    legend.innerHTML += `
+      <span class="leg-item leg-hidden-summary">
+        🔁 숨긴 공고 <b>${hiddenFolders.length}</b>건
+        <button class="leg-action restore" onclick="_showHiddenFoldersPanel()">목록 보기</button>
+        <button class="leg-action restore" onclick="_unhideAllCalFolders()">전체 복원</button>
+      </span>`;
+  }
+
   // 그리드 — 일~토 헤더 + 6주(주 단위 행)
+  // 숨김 폴더 이벤트는 그리드에서도 제외 (라벨에서 사라지면 자연스럽게 일정도 사라져야)
+  const _visibleEvents = (CAL_DATA.events || []).filter(ev => !hiddenSet.has(ev.folder_id));
   const grid = document.getElementById("cal-grid");
   const empty = document.getElementById("cal-empty");
-  empty.style.display = (CAL_DATA.events || []).length ? "none" : "block";
+  empty.style.display = _visibleEvents.length ? "none" : "block";
 
   const year = CAL_VIEW.getFullYear();
   const month = CAL_VIEW.getMonth();
@@ -9748,7 +9857,7 @@ function renderCalendar() {
 
     // 이 주에 표시할 이벤트 — 기간이 주와 겹치는 것 + 그 주의 단일 이벤트
     const weekEvents = [];
-    for (const ev of (CAL_DATA.events || [])) {
+    for (const ev of _visibleEvents) {
       const ds = parseISODate(ev.date_start);
       const de = parseISODate(ev.date_end) || ds;
       if (!ds) continue;
@@ -9861,7 +9970,9 @@ function _calOpenDayPopup(year, month, day, ev) {
   if (ev && ev.stopPropagation) ev.stopPropagation();
   const target = new Date(year, month, day);
   const targetStr = ymd(target);
+  const hiddenSet = _getHiddenFolderIds();
   const evs = (CAL_DATA.events || []).filter(e => {
+    if (hiddenSet.has(e.folder_id)) return false;
     const ds = parseISODate(e.date_start);
     const de = parseISODate(e.date_end) || ds;
     return ds && de >= target && ds <= target;
