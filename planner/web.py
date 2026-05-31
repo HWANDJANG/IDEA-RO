@@ -200,6 +200,11 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/api/announcements/") and path.endswith("/auto-attachments"):
             ann_id_str = path[len("/api/announcements/"):-len("/auto-attachments")]
             self._handle_auto_attachments_get(ann_id_str)
+        elif path.startswith("/api/announcements/") and path.endswith("/chat-history"):
+            ann_id_str = path[len("/api/announcements/"):-len("/chat-history")]
+            self._handle_chat_history_get(ann_id_str)
+        elif path == "/api/library":
+            self._handle_library_list()
         elif path == "/api/auth/me":
             self._handle_auth_me()
         elif path == "/api/profile":
@@ -368,6 +373,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/announcements/") and path.endswith("/chat"):
             ann_id_str = path[len("/api/announcements/"):-len("/chat")]
             self._handle_announcement_chat(ann_id_str)
+            return
+        # 라이브러리 — 담기
+        if path.startswith("/api/library/"):
+            ann_id_str = path[len("/api/library/"):].strip("/")
+            self._handle_library_pick(ann_id_str)
             return
         if path == "/api/upload":
             self._handle_upload()
@@ -775,6 +785,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         # 단일 공고는 첨부 없어도 OK — 메타만으로 LLM 이 답변 시도
 
+        # 라이브러리: history 가 비어 있고 DB 에 이력이 있으면 자동 복원 (페이지 재진입 시)
+        if not history:
+            history = self._load_chat_history(user_id, ann_id, limit=20)
+
         profile = self._llm_safe_profile()
         try:
             result = chat_compare(items, question, history, profile=profile)
@@ -784,7 +798,179 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"채팅 실패: {e}"}, status=500)
             return
+
+        # 라이브러리: 사용자 질문 + 응답을 DB 에 영구 저장 (실패해도 응답은 그대로 반환)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "INSERT INTO announcement_chat_messages(user_id, announcement_id, role, content) VALUES (?, ?, 'user', ?)",
+                (user_id, ann_id, question),
+            )
+            conn.execute(
+                "INSERT INTO announcement_chat_messages(user_id, announcement_id, role, content) VALUES (?, ?, 'assistant', ?)",
+                (user_id, ann_id, result.get("answer") or ""),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass  # 채팅 영구화 실패는 silent
+
         self._send_json(result)
+
+    def _load_chat_history(self, user_id: int, ann_id: int, *, limit: int = 20) -> list[dict]:
+        """공고별 채팅 이력을 시간순으로 로드. chat_compare 가 받는 [{role, text}] 형태."""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT role, content FROM announcement_chat_messages "
+                "WHERE user_id=? AND announcement_id=? ORDER BY id DESC LIMIT ?",
+                (user_id, ann_id, limit * 2),  # user+assistant 짝
+            ).fetchall()
+            conn.close()
+            # 시간순 (오래된 것부터) 으로 뒤집기
+            rows = list(reversed(rows))
+            return [{"role": r["role"], "text": r["content"]} for r in rows]
+        except Exception:
+            return []
+
+    def _handle_chat_history_get(self, ann_id_str: str) -> None:
+        """공고별 채팅 이력 조회 — 사이드 패널 채팅 탭 진입 시 호출.
+
+        GET /api/announcements/{ann_id}/chat-history
+        Response: { "messages": [{role:'user'|'assistant', content:str, created_at:str}], "count":int }
+        """
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            ann_id = int(ann_id_str)
+        except ValueError:
+            self._send_json({"error": "invalid id"}, status=400)
+            return
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            rows = [dict(r) for r in conn.execute(
+                "SELECT role, content, created_at FROM announcement_chat_messages "
+                "WHERE user_id=? AND announcement_id=? ORDER BY id ASC",
+                (user_id, ann_id),
+            )]
+            conn.close()
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": str(e)}, status=500)
+            return
+        self._send_json({"messages": rows, "count": len(rows)})
+
+    # ─── 라이브러리 (담은 공고) ──────────────────────────────────────────
+    def _handle_library_list(self) -> None:
+        """GET /api/library — 사용자가 담은 공고 목록 (마감일 가까운 순).
+
+        Response: { "items": [{
+          announcement_id, title, source_code, source_name, department,
+          start_date, end_date, d_day, detail_url, source, picked_at,
+          chat_count, last_chat_at, last_chat_preview
+        }], "count": int }
+        """
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            rows = [dict(r) for r in conn.execute("""
+                SELECT
+                    p.announcement_id, p.source, p.picked_at, p.note,
+                    a.title, a.start_date, a.end_date, a.d_day, a.detail_url,
+                    a.department, a.raw_meta,
+                    s.code AS source_code, s.name AS source_name,
+                    (SELECT COUNT(*) FROM announcement_chat_messages m
+                     WHERE m.user_id=p.user_id AND m.announcement_id=p.announcement_id) AS chat_count,
+                    (SELECT created_at FROM announcement_chat_messages m
+                     WHERE m.user_id=p.user_id AND m.announcement_id=p.announcement_id
+                     ORDER BY id DESC LIMIT 1) AS last_chat_at,
+                    (SELECT content FROM announcement_chat_messages m
+                     WHERE m.user_id=p.user_id AND m.announcement_id=p.announcement_id AND m.role='user'
+                     ORDER BY id DESC LIMIT 1) AS last_chat_preview
+                FROM user_picked_announcements p
+                JOIN announcements a ON a.id = p.announcement_id
+                JOIN sources s ON s.id = a.source_id
+                WHERE p.user_id=?
+                ORDER BY
+                    CASE WHEN a.end_date IS NULL OR a.end_date = '' THEN 1 ELSE 0 END,
+                    a.end_date ASC,
+                    p.picked_at DESC
+            """, (user_id,))]
+            conn.close()
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": str(e)}, status=500)
+            return
+        self._send_json({"items": rows, "count": len(rows)})
+
+    def _handle_library_pick(self, ann_id_str: str) -> None:
+        """POST /api/library/{ann_id} — 공고를 라이브러리에 담기.
+        Body: { "source": "recommendation"|"browse"|"compare"|"panel", "note": str? }
+        Response: { "ok": true, "picked": true }  (이미 담겨 있어도 idempotent)
+        """
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            ann_id = int(ann_id_str)
+        except ValueError:
+            self._send_json({"error": "invalid id"}, status=400)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8")) if raw else {}
+        except json.JSONDecodeError:
+            data = {}
+        source = (data.get("source") or "recommendation").strip()
+        if source not in ("recommendation", "browse", "compare", "panel"):
+            source = "recommendation"
+        note = data.get("note")
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            # 공고 존재 확인
+            row = conn.execute("SELECT id FROM announcements WHERE id=?", (ann_id,)).fetchone()
+            if not row:
+                conn.close()
+                self._send_json({"error": "공고를 찾을 수 없습니다"}, status=404)
+                return
+            conn.execute(
+                "INSERT OR IGNORE INTO user_picked_announcements(user_id, announcement_id, source, note) VALUES (?, ?, ?, ?)",
+                (user_id, ann_id, source, note),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": str(e)}, status=500)
+            return
+        self._send_json({"ok": True, "picked": True, "announcement_id": ann_id, "source": source})
+
+    def _handle_library_unpick(self, ann_id_str: str) -> None:
+        """DELETE /api/library/{ann_id} — 라이브러리에서 제외 (채팅 이력은 보존)."""
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            ann_id = int(ann_id_str)
+        except ValueError:
+            self._send_json({"error": "invalid id"}, status=400)
+            return
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "DELETE FROM user_picked_announcements WHERE user_id=? AND announcement_id=?",
+                (user_id, ann_id),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": str(e)}, status=500)
+            return
+        self._send_json({"ok": True, "picked": False})
 
     # ─── Step 4: 공고 페이지 자동 fetch + 분석 ────────────────────────
     def _handle_auto_attachments_get(self, ann_id_str: str) -> None:
@@ -929,6 +1115,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/schedule/"):
             event_id_str = path[len("/api/schedule/"):].strip("/")
             self._handle_schedule_delete(event_id_str)
+            return
+        # 라이브러리 — 담기 해제
+        if path.startswith("/api/library/"):
+            ann_id_str = path[len("/api/library/"):].strip("/")
+            self._handle_library_unpick(ann_id_str)
             return
         self._send_json({"error": "not found"}, status=404)
 

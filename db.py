@@ -253,6 +253,32 @@ CREATE TABLE IF NOT EXISTS announcement_auto_attachments (
 );
 CREATE INDEX IF NOT EXISTS idx_auto_attachments_ann ON announcement_auto_attachments(announcement_id);
 CREATE INDEX IF NOT EXISTS idx_auto_attachments_hash ON announcement_auto_attachments(file_hash);
+
+-- Phase 8 (라이브러리): 사용자가 "라이브러리에 담은" 공고. 새로고침 후에도 유지.
+-- source: 'recommendation' (AI 추천에서 담음) | 'browse' (둘러보기) | 'compare' | 'panel'
+CREATE TABLE IF NOT EXISTS user_picked_announcements (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+    source          TEXT NOT NULL DEFAULT 'recommendation',
+    note            TEXT,
+    picked_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, announcement_id)
+);
+CREATE INDEX IF NOT EXISTS idx_picked_user ON user_picked_announcements(user_id);
+CREATE INDEX IF NOT EXISTS idx_picked_ann  ON user_picked_announcements(announcement_id);
+
+-- Phase 8 (라이브러리): 사이드 패널 채팅 메시지 영구 저장. 공고당 누적.
+-- role: 'user' | 'assistant'. content: 메시지 본문 (LLM 응답 또는 사용자 질문).
+CREATE TABLE IF NOT EXISTS announcement_chat_messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL,                  -- 'user' | 'assistant'
+    content         TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_chat_user_ann ON announcement_chat_messages(user_id, announcement_id, id);
 """
 
 

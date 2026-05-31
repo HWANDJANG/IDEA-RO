@@ -3704,7 +3704,7 @@
 
     <div class="sb-group-label">탐색</div>
     <button class="tab-btn" data-tab="browse"><span class="sb-ic">🔍</span>공고 둘러보기<span class="count" id="cnt-browse">·</span></button>
-    <button class="tab-btn" data-tab="plan"><span class="sb-ic">🎯</span>내 액션 플랜<span class="count" id="cnt-plan">·</span></button>
+    <button class="tab-btn" data-tab="plan"><span class="sb-ic">✨</span>AI 추천 공고<span class="count" id="cnt-plan">·</span></button>
 
     <!-- (Phase 1 통합) 공고 매칭·공고 분석 은 사이드바에서 제외. pane-match / pane-analyze 는
          JS 호환을 위해 DOM 에는 남겨두며, Phase 2~3 에서 '공고 둘러보기' 안으로 흡수 예정.
@@ -4921,15 +4921,33 @@ async function _fetchPlanNarrativesAsync(plan) {
 // 카드의 "담기" 버튼 클릭 → 선택 토글 + 타임라인 즉시 재렌더
 let _planGuideDebounce = null;
 
-function togglePlanPick(id) {
-  if (_planPicked.has(id)) _planPicked.delete(id);
+// 라이브러리에 담기 — DB 영구화 (POST/DELETE). 메모리 캐시(_planPicked) 와 동기화.
+// source: "recommendation" | "browse" | "compare" | "panel" — 어디서 담았는지 기록
+async function togglePlanPick(id, source = "recommendation") {
+  const was = _planPicked.has(id);
+  // 낙관적 UI 업데이트 — 실패 시 롤백
+  if (was) _planPicked.delete(id);
   else _planPicked.add(id);
-  // 카드 자체 클래스 토글
-  const card = document.getElementById(`plan-card-${id}`);
-  if (card) card.classList.toggle("selected", _planPicked.has(id));
-  // 버튼 라벨 갱신
-  const btn = document.getElementById(`plan-pick-${id}`);
-  if (btn) btn.innerHTML = _planPicked.has(id) ? "✓ 담음" : "+ 내 플랜에 담기";
+  _renderPickedUiFor(id);
+
+  try {
+    const res = await fetch(`/api/library/${id}`, {
+      method: was ? "DELETE" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: was ? null : JSON.stringify({ source }),
+    });
+    if (!res.ok && res.status !== 401) {
+      // 401 은 비로그인 — 메모리만 유지 (기존 동작 보존)
+      throw new Error(`status ${res.status}`);
+    }
+  } catch (e) {
+    // 롤백
+    if (was) _planPicked.add(id);
+    else _planPicked.delete(id);
+    _renderPickedUiFor(id);
+    return;
+  }
+
   // 타임라인 재렌더 (선택된 공고만)
   if (_planLast) {
     const mount = document.getElementById("plan-timeline-mount");
@@ -4938,6 +4956,29 @@ function togglePlanPick(id) {
   // 가이드는 LLM 호출이라 debounce (담기/해제를 연속으로 누를 때 중복 호출 방지)
   clearTimeout(_planGuideDebounce);
   _planGuideDebounce = setTimeout(_fetchPlanGuideAsync, 700);
+}
+
+function _renderPickedUiFor(id) {
+  const card = document.getElementById(`plan-card-${id}`);
+  if (card) card.classList.toggle("selected", _planPicked.has(id));
+  const btn = document.getElementById(`plan-pick-${id}`);
+  if (btn) btn.innerHTML = _planPicked.has(id) ? "✓ 라이브러리에 담음" : "+ 내 라이브러리에 담기";
+}
+
+// 페이지 로드 시 라이브러리 DB 에서 picked 복원 (새로고침해도 유지)
+async function _loadPickedFromDb() {
+  try {
+    const res = await fetch("/api/library");
+    if (!res.ok) return;
+    const data = await res.json();
+    _planPicked.clear();
+    for (const it of (data.items || [])) {
+      const id = parseInt(it.announcement_id, 10);
+      if (Number.isFinite(id)) _planPicked.add(id);
+    }
+    // 현재 표시된 카드들의 UI 만 업데이트 (있는 것만)
+    _planPicked.forEach(_renderPickedUiFor);
+  } catch (_) {}
 }
 
 // Step 5: 담은 공고 기반 액션 가이드 (LLM)
@@ -5151,14 +5192,14 @@ function _renderPlanTimeline(plan) {
       <div class="plan-timeline-wrap">
         <div class="plan-tl-head">
           <div>
-            <div class="plan-tl-title">📅 내 액션 플랜</div>
-            <div class="plan-tl-sub">위 추천 공고 중 마음에 드는 걸 <b>"+ 내 플랜에 담기"</b> 로 골라보세요. 담은 공고들의 발급 일정과 마감을 시간순으로 모아드릴게요.</div>
+            <div class="plan-tl-title">📅 라이브러리에 담은 공고 일정</div>
+            <div class="plan-tl-sub">위 추천 공고 중 마음에 드는 걸 <b>"+ 내 라이브러리에 담기"</b> 로 골라보세요. 담은 공고들의 발급 일정과 마감을 시간순으로 모아드릴게요.</div>
           </div>
         </div>
         <div class="plan-empty-state" style="margin-top:14px">
           <div class="icon">🗂️</div>
           <div class="ttl">담은 공고가 없습니다</div>
-          <div class="sub">추천 카드의 <b>+ 내 플랜에 담기</b> 버튼을 눌러보세요.</div>
+          <div class="sub">추천 카드의 <b>+ 내 라이브러리에 담기</b> 버튼을 눌러보세요.</div>
         </div>
       </div>
     `;
@@ -5208,7 +5249,7 @@ function _renderPlanTimeline(plan) {
     <div class="plan-timeline-wrap">
       <div class="plan-tl-head">
         <div>
-          <div class="plan-tl-title">📅 내 액션 플랜 <span style="color:var(--accent); font-size:14px">· 담은 공고 ${pickedCount}건</span></div>
+          <div class="plan-tl-title">📅 라이브러리 일정 <span style="color:var(--accent); font-size:14px">· 담은 공고 ${pickedCount}건</span></div>
           <div class="plan-tl-sub">담은 공고들의 발급 태스크와 신청 마감을 시간순으로 모았어요. 같은 서류는 가장 빠른 일정으로 묶었습니다.</div>
         </div>
         <div class="plan-tl-count">선택 <b id="plan-tl-sel-count">${items.length}</b> / 전체 ${items.length}건</div>
@@ -5398,7 +5439,7 @@ function _renderPlanCard(r, rank) {
       ${tasksBlock}
 
       <div class="plan-cta-row">
-        <button class="plan-pick-btn" id="plan-pick-${r.announcement_id}" onclick="togglePlanPick(${r.announcement_id})">${picked ? '✓ 담음' : '+ 내 플랜에 담기'}</button>
+        <button class="plan-pick-btn" id="plan-pick-${r.announcement_id}" onclick="togglePlanPick(${r.announcement_id}, 'recommendation')">${picked ? '✓ 라이브러리에 담음' : '+ 내 라이브러리에 담기'}</button>
         <button class="plan-cta" onclick="openAnnPanel(${r.announcement_id}, 'guide')" title="이 공고만의 가이드 + 질문">💬 가이드/질문</button>
         ${r.detail_url ? `<a class="plan-cta" href="${escapeHtml(r.detail_url)}" target="_blank" rel="noopener">원문 공고 →</a>` : ""}
         <button class="plan-cta" onclick="(function(){ const m=document.querySelector('.tab-btn[data-tab=\\'browse\\']'); if(m) m.click(); })()">둘러보기에서 보기</button>
@@ -9422,6 +9463,11 @@ function closeAnnPanel() {
     panel.setAttribute("aria-hidden", "true");
   }
   if (backdrop) backdrop.classList.remove("show");
+  // 다음 진입 시 채팅 이력 DB 에서 새로 로드 (라이브러리 페이지에서 본 후 반영)
+  if (_annPanelCurrentId != null) {
+    _annPanelChats.delete(_annPanelCurrentId);
+    _annPanelLoaded.delete(`${_annPanelCurrentId}:chat`);
+  }
   _annPanelCurrentId = null;
 }
 
@@ -9468,10 +9514,21 @@ const ANN_CHAT_SUGGESTIONS = [
   "주요 평가 기준이 뭐야?",
 ];
 
-function _mountAnnPanelChat(annId) {
+async function _mountAnnPanelChat(annId) {
   const pane = document.getElementById("ann-pane-chat");
   if (!pane) return;
-  const history = _annPanelChats.get(annId) || [];
+
+  // 메모리 캐시에 있으면 즉시 사용 — 없으면 DB 에서 비동기 로드
+  let history = _annPanelChats.get(annId);
+  if (!history) {
+    // 로딩 표시 후 DB fetch
+    pane.innerHTML = `<div class="ann-panel-placeholder"><div class="ph-icon">💬</div><div>이전 대화 불러오는 중...</div></div>`;
+    history = await _fetchAnnChatHistory(annId);
+    _annPanelChats.set(annId, history);
+    // 패널 열림 중에 다른 공고로 전환됐으면 (race) 그리지 않음
+    if (_annPanelCurrentId !== annId || _annPanelCurrentTab !== "chat") return;
+  }
+
   const msgsHtml = history.length
     ? history.map(m => _annChatMsgHtml(m.role, m.text)).join("")
     : `
@@ -9498,6 +9555,17 @@ function _mountAnnPanelChat(annId) {
   // 스크롤을 맨 아래로
   const msgsEl = document.getElementById("ann-chat-msgs");
   if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+async function _fetchAnnChatHistory(annId) {
+  try {
+    const res = await fetch(`/api/announcements/${annId}/chat-history`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.messages || []).map(m => ({ role: m.role, text: m.content }));
+  } catch (_) {
+    return [];
+  }
 }
 
 function _annChatMsgHtml(role, text, extraClass = "") {
@@ -10700,6 +10768,8 @@ function handleAuthErrorFromUrl() {
       setTimeout(() => openOnboarding(), 400);
     }
   }
+  // 라이브러리 (담은 공고) 캐시 — 새로고침 후에도 _planPicked 복원
+  if (CURRENT_USER) await _loadPickedFromDb();
   // 보유 서류 캐시 채우기 (Phase 6: DB) + 첫 로그인 시 localStorage 자동 이관
   await loadMyDocsFromServer();
   await migrateLocalDocsIfNeeded();
