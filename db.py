@@ -279,6 +279,22 @@ CREATE TABLE IF NOT EXISTS announcement_chat_messages (
     created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_chat_user_ann ON announcement_chat_messages(user_id, announcement_id, id);
+
+-- Phase 9 (캘린더 취소): 외부 캘린더 (Google/Naver) 에 등록한 일정 추적.
+-- 등록 시 응답 ID 저장 → 사용자가 "취소" 버튼 누르면 외부 API DELETE + 이 row 삭제.
+-- provider='naver' 는 응답에서 UID 추출 가능한 경우만 row 생성 (못 받으면 안내만).
+CREATE TABLE IF NOT EXISTS external_calendar_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider     TEXT NOT NULL,                    -- 'google' | 'naver'
+    external_id  TEXT NOT NULL,                    -- Google: eventId, Naver: scheduleId/UID
+    summary      TEXT,
+    date_start   TEXT,
+    html_link    TEXT,                             -- Google 만
+    registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, provider, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ext_cal_user ON external_calendar_events(user_id);
 """
 
 

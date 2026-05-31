@@ -685,6 +685,62 @@
   }
   .cal-export { display: flex; gap: 6px; align-items: center; }
 
+  /* 외부 캘린더 등록 일정 (취소 가능) */
+  .ext-cal-section {
+    margin-top: 12px;
+    background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden;
+  }
+  .ext-cal-toggle {
+    width: 100%; padding: 10px 14px; text-align: left;
+    background: transparent; border: none; cursor: pointer; font-family: inherit;
+    font-size: 12.5px; font-weight: 600; color: var(--text);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .ext-cal-toggle:hover { background: rgba(0,0,0,0.03); }
+  .ext-cal-toggle #ext-cal-count {
+    color: var(--accent); font-weight: 700;
+  }
+  .ext-cal-caret { transition: transform 0.15s; }
+  .ext-cal-section.open .ext-cal-caret { transform: rotate(180deg); }
+  .ext-cal-list {
+    display: none; padding: 0 12px 12px;
+    max-height: 320px; overflow-y: auto;
+  }
+  .ext-cal-section.open .ext-cal-list { display: block; }
+  .ext-cal-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; margin-top: 4px;
+    background: white; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 12.5px;
+  }
+  .ext-cal-prov {
+    flex-shrink: 0; padding: 2px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700;
+  }
+  .ext-cal-prov.google { background: #fef3c7; color: #92400e; }
+  .ext-cal-prov.naver  { background: #dcfce7; color: #15803d; }
+  .ext-cal-summary {
+    flex: 1; min-width: 0;
+    color: var(--text); font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ext-cal-date { color: var(--muted); font-size: 11.5px; flex-shrink: 0; }
+  .ext-cal-link {
+    color: var(--muted); font-size: 11px; text-decoration: none; flex-shrink: 0;
+  }
+  .ext-cal-link:hover { color: var(--accent); }
+  .ext-cal-cancel {
+    flex-shrink: 0; padding: 4px 10px; border-radius: 6px;
+    background: white; color: var(--muted); border: 1px solid var(--border-strong);
+    font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+  }
+  .ext-cal-cancel:hover { color: #991B1B; border-color: #FCA5A5; background: #FEF2F2; }
+  .ext-cal-empty {
+    padding: 12px; text-align: center; color: var(--muted); font-size: 12px;
+  }
+
   /* ─── 캘린더: 모던 리뉴얼 (주 단위 + 기간 bar) ─── */
   .cal-grid {
     background: white; border: 1px solid var(--border);
@@ -4300,6 +4356,15 @@
       <div id="gcal-status-bar" class="ac-meta" style="margin-top:6px"></div>
       <div id="ncal-status-bar" class="ac-meta" style="margin-top:4px"></div>
 
+      <!-- 외부 캘린더에 등록한 일정 — 취소 가능 -->
+      <div id="ext-cal-section" class="ext-cal-section" style="display:none">
+        <button class="ext-cal-toggle" onclick="_toggleExtCalList()">
+          <span id="ext-cal-toggle-label">📤 외부 캘린더에 등록한 일정 <span id="ext-cal-count">0</span>건</span>
+          <span class="ext-cal-caret" id="ext-cal-caret">▾</span>
+        </button>
+        <div class="ext-cal-list" id="ext-cal-list"></div>
+      </div>
+
       <div id="cal-grid" class="cal-grid"></div>
 
       <div id="cal-empty" class="empty" style="margin-top:14px; display:none">
@@ -4559,6 +4624,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
       loadCalendar();
       refreshGoogleCalendarStatus();
       refreshNaverCalendarStatus();
+      loadExtCalendarRegistered();
     }
     if (btn.dataset.tab === "profile") {
       renderProfilePanel();
@@ -10688,6 +10754,88 @@ function _collectSelectedEventsForExternal() {
     .map(_eventToExternalPayload);
 }
 
+// ─── 외부 캘린더 등록 일정 관리 (취소 가능) ──────────────────────────
+async function loadExtCalendarRegistered() {
+  const section = document.getElementById("ext-cal-section");
+  const list = document.getElementById("ext-cal-list");
+  const cnt = document.getElementById("ext-cal-count");
+  if (!section || !list) return;
+  if (typeof CURRENT_USER === "undefined" || !CURRENT_USER) {
+    section.style.display = "none";
+    return;
+  }
+  try {
+    const res = await fetch("/api/calendar/registered");
+    if (!res.ok) {
+      section.style.display = "none";
+      return;
+    }
+    const data = await res.json();
+    const items = data.items || [];
+    if (!items.length) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "block";
+    if (cnt) cnt.textContent = items.length;
+    list.innerHTML = items.map(it => {
+      const prov = it.provider === "google" ? "Google" : "Naver";
+      const provCls = it.provider;
+      const dateStr = it.date_start ? String(it.date_start).slice(0, 10) : "";
+      const linkHtml = it.html_link
+        ? `<a class="ext-cal-link" href="${escapeHtml(it.html_link)}" target="_blank" rel="noopener">열기 ↗</a>`
+        : "";
+      return `
+        <div class="ext-cal-item" data-eid="${escapeHtml(it.external_id)}" data-prov="${provCls}">
+          <span class="ext-cal-prov ${provCls}">${prov}</span>
+          <span class="ext-cal-summary" title="${escapeHtml(it.summary || '')}">${escapeHtml(it.summary || '(제목 없음)')}</span>
+          ${dateStr ? `<span class="ext-cal-date">${escapeHtml(dateStr)}</span>` : ""}
+          ${linkHtml}
+          <button class="ext-cal-cancel" onclick="_cancelExtCal(this, '${provCls}', ${JSON.stringify(it.external_id)})">× 취소</button>
+        </div>`;
+    }).join("");
+  } catch (_) {
+    section.style.display = "none";
+  }
+}
+
+function _toggleExtCalList() {
+  document.getElementById("ext-cal-section")?.classList.toggle("open");
+}
+
+async function _cancelExtCal(btn, provider, externalId) {
+  const item = btn.closest(".ext-cal-item");
+  const summary = item?.querySelector(".ext-cal-summary")?.textContent || "이 일정";
+  const provKr = provider === "google" ? "Google" : "네이버";
+  if (!confirm(`${provKr} 캘린더에서 "${summary}" 일정을 삭제할까요?`)) return;
+  btn.disabled = true;
+  btn.textContent = "처리 중...";
+  try {
+    const res = await fetch(`/api/calendar/registered/${provider}/${encodeURIComponent(externalId)}`, {
+      method: "DELETE",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert("취소 실패: " + (data.error || res.status));
+      btn.disabled = false; btn.textContent = "× 취소";
+      return;
+    }
+    if (data.external_error) {
+      // DB 는 정리됐지만 외부 삭제 실패 (수동 삭제 안내)
+      console.warn("외부 삭제 실패:", data.external_error);
+    }
+    // 성공 — 행 제거 + 카운트 갱신
+    item?.remove();
+    const remaining = document.querySelectorAll("#ext-cal-list .ext-cal-item").length;
+    const cnt = document.getElementById("ext-cal-count");
+    if (cnt) cnt.textContent = remaining;
+    if (remaining === 0) document.getElementById("ext-cal-section").style.display = "none";
+  } catch (e) {
+    alert("취소 실패: " + e.message);
+    btn.disabled = false; btn.textContent = "× 취소";
+  }
+}
+
 async function _pushEventsToProvider(events, provider) {
   // 공통 로직: provider='google'|'naver' 의 insert API 호출 + 결과 alert
   if (!events.length) {
@@ -10744,6 +10892,10 @@ async function _pushEventsToProvider(events, provider) {
     }
     console.log(`[${providerKr} Calendar insert]`, data);
     alert(msg);
+    // 등록 직후 — 캘린더 페이지가 열려 있으면 외부 등록 목록 자동 갱신
+    if (document.getElementById("pane-calendar")?.classList.contains("active")) {
+      loadExtCalendarRegistered();
+    }
   } catch (e) {
     alert(`${providerKr} 캘린더 추가 실패: ${e.message}`);
   }

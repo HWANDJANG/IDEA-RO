@@ -205,6 +205,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_chat_history_get(ann_id_str)
         elif path == "/api/library":
             self._handle_library_list()
+        elif path == "/api/calendar/registered":
+            self._handle_registered_calendar_list()
         elif path == "/api/auth/me":
             self._handle_auth_me()
         elif path == "/api/profile":
@@ -972,6 +974,156 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send_json({"ok": True, "picked": False})
 
+    # ─── 외부 캘린더 (Google/Naver) 등록 일정 추적 + 취소 ─────────────
+    def _handle_registered_calendar_list(self) -> None:
+        """GET /api/calendar/registered — 외부 캘린더 등록 일정 목록 (최근순)."""
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            rows = [dict(r) for r in conn.execute(
+                "SELECT id, provider, external_id, summary, date_start, html_link, registered_at "
+                "FROM external_calendar_events WHERE user_id=? "
+                "ORDER BY registered_at DESC LIMIT 200",
+                (user_id,),
+            )]
+            conn.close()
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": str(e)}, status=500)
+            return
+        self._send_json({"items": rows, "count": len(rows)})
+
+    def _handle_registered_calendar_delete(self, rest: str) -> None:
+        """DELETE /api/calendar/registered/{provider}/{external_id}
+        외부 캘린더에서 일정 삭제 + DB row 제거.
+        provider: 'google' | 'naver'
+        """
+        user_id = self._require_user_id()
+        if user_id is None:
+            return
+        parts = rest.split("/", 1)
+        if len(parts) != 2:
+            self._send_json({"error": "provider/external_id 필요"}, status=400)
+            return
+        provider, external_id = parts[0], parts[1]
+        if provider not in ("google", "naver"):
+            self._send_json({"error": "invalid provider"}, status=400)
+            return
+
+        # DB row 검증 (사용자 본인 것만 삭제)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT id FROM external_calendar_events "
+                "WHERE user_id=? AND provider=? AND external_id=?",
+                (user_id, provider, external_id),
+            ).fetchone()
+            conn.close()
+        except Exception as e:  # noqa: BLE001
+            self._send_json({"error": str(e)}, status=500)
+            return
+        if not row:
+            self._send_json({"error": "등록된 일정을 찾을 수 없습니다"}, status=404)
+            return
+
+        # 외부 API DELETE 호출
+        external_deleted = False
+        external_error: Optional[str] = None
+        if provider == "google":
+            external_deleted, external_error = self._delete_google_event(user_id, external_id)
+        else:  # naver
+            external_deleted, external_error = self._delete_naver_event(user_id, external_id)
+
+        # 외부 삭제 실패해도 DB 는 정리 (사용자가 외부에서 직접 지웠을 수도 = 404 OK)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "DELETE FROM external_calendar_events "
+                "WHERE user_id=? AND provider=? AND external_id=?",
+                (user_id, provider, external_id),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        self._send_json({
+            "ok": True,
+            "external_deleted": external_deleted,
+            "external_error": external_error,
+        })
+
+    def _delete_google_event(self, user_id: int, event_id: str) -> tuple[bool, Optional[str]]:
+        """Google Calendar primary 의 일정 삭제. (success, error?) 반환."""
+        import urllib.error, urllib.request
+        access = get_valid_google_access_token(user_id)
+        if not access:
+            return False, "Google Calendar 가 연동되지 않았습니다"
+        url = f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{urllib.parse.quote(event_id)}"
+        req = urllib.request.Request(
+            url, method="DELETE",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                # 204 No Content 가 정상
+                if resp.status in (200, 204):
+                    return True, None
+                return False, f"Google API {resp.status}"
+        except urllib.error.HTTPError as e:
+            # 404/410 = 이미 삭제됨 (성공으로 간주)
+            if e.code in (404, 410):
+                return True, None
+            body_text = ""
+            try:
+                body_text = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            return False, f"Google API {e.code}: {body_text[:200]}"
+        except Exception as e:  # noqa: BLE001
+            return False, str(e)
+
+    def _delete_naver_event(self, user_id: int, schedule_id: str) -> tuple[bool, Optional[str]]:
+        """Naver Calendar 의 일정 삭제. Open API: deleteSchedule.json
+        Body: calendarId + scheduleId
+        """
+        import urllib.error, urllib.request
+        access = get_valid_naver_access_token(user_id)
+        if not access:
+            return False, "네이버 캘린더가 연동되지 않았습니다"
+        access = (access or "").strip()
+        url = "https://openapi.naver.com/calendar/deleteSchedule.json"
+        params = urllib.parse.urlencode({
+            "calendarId": "defaultCalendarId",
+            "scheduleId": schedule_id,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=params, method="POST",
+            headers={
+                "Authorization": f"Bearer {access}",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                if resp.status in (200, 204):
+                    return True, None
+                return False, f"Naver API {resp.status}"
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                return True, None
+            body_text = ""
+            try:
+                body_text = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            return False, f"Naver API {e.code}: {body_text[:200]}"
+        except Exception as e:  # noqa: BLE001
+            return False, str(e)
+
     # ─── Step 4: 공고 페이지 자동 fetch + 분석 ────────────────────────
     def _handle_auto_attachments_get(self, ann_id_str: str) -> None:
         """공고에 대해 이미 자동 수집/분석된 첨부 목록 조회 (트리거 X, 캐시만).
@@ -1120,6 +1272,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/library/"):
             ann_id_str = path[len("/api/library/"):].strip("/")
             self._handle_library_unpick(ann_id_str)
+            return
+        # 캘린더 — 외부 등록 일정 취소 (provider/external_id)
+        if path.startswith("/api/calendar/registered/"):
+            rest = path[len("/api/calendar/registered/"):].strip("/")
+            self._handle_registered_calendar_delete(rest)
             return
         self._send_json({"error": "not found"}, status=404)
 
@@ -2715,12 +2872,28 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     out = json.loads(resp.read().decode("utf-8"))
+                google_event_id = out.get("id")
+                html_link = out.get("htmlLink")
                 results.append({
                     "input_id": ev.get("id"),
-                    "google_event_id": out.get("id"),
-                    "html_link": out.get("htmlLink"),
+                    "google_event_id": google_event_id,
+                    "html_link": html_link,
                     "summary": summary,
                 })
+                # 외부 등록 일정 추적 — 나중에 사용자가 취소 가능하도록
+                if google_event_id:
+                    try:
+                        c2 = sqlite3.connect(DB_PATH)
+                        c2.execute(
+                            "INSERT OR IGNORE INTO external_calendar_events"
+                            "(user_id, provider, external_id, summary, date_start, html_link) "
+                            "VALUES (?, 'google', ?, ?, ?, ?)",
+                            (user_id, google_event_id, summary, ds, html_link),
+                        )
+                        c2.commit()
+                        c2.close()
+                    except Exception:  # noqa: BLE001
+                        pass
             except urllib.error.HTTPError as e:
                 body_text = ""
                 try:
@@ -2922,6 +3095,33 @@ class Handler(BaseHTTPRequestHandler):
                     "summary": ev.get("summary"),
                     "naver_response": out,
                 })
+                # Naver 응답에서 schedule UID 추출 시도 (있을 때만 취소 가능 row 저장)
+                # 응답 구조 예시 가능: {"message":{"result":{"scheduleId":"..."}}} 또는 raw text
+                naver_uid = None
+                try:
+                    if isinstance(out, dict):
+                        msg = out.get("message") or {}
+                        result_o = msg.get("result") if isinstance(msg, dict) else None
+                        if isinstance(result_o, dict):
+                            naver_uid = result_o.get("scheduleId") or result_o.get("uid")
+                        if not naver_uid:
+                            # 다른 가능성 — top-level
+                            naver_uid = out.get("scheduleId") or out.get("uid")
+                except Exception:  # noqa: BLE001
+                    naver_uid = None
+                if naver_uid:
+                    try:
+                        c2 = sqlite3.connect(DB_PATH)
+                        c2.execute(
+                            "INSERT OR IGNORE INTO external_calendar_events"
+                            "(user_id, provider, external_id, summary, date_start) "
+                            "VALUES (?, 'naver', ?, ?, ?)",
+                            (user_id, str(naver_uid), ev.get("summary"), ev.get("date_start")),
+                        )
+                        c2.commit()
+                        c2.close()
+                    except Exception:  # noqa: BLE001
+                        pass
             except urllib.error.HTTPError as e:
                 body_text = ""
                 try:
