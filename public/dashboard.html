@@ -4448,7 +4448,8 @@
       <div id="cal-grid" class="cal-grid"></div>
 
       <div id="cal-empty" class="empty" style="margin-top:14px; display:none">
-        아직 추가된 일정이 없습니다. <b>공고 둘러보기</b> 에서 공고 페이지를 열거나 PDF 를 업로드하면 일정이 자동 추출됩니다.
+        라이브러리에 담은 공고의 일정만 캘린더에 표시됩니다.
+        <br>관심 공고가 있다면 <b>⭐ 라이브러리에 담기</b> 로 추가해 주세요.
       </div>
     </div>
 
@@ -5383,6 +5384,10 @@ async function togglePlanPick(id, source = "recommendation") {
   // 가이드는 LLM 호출이라 debounce (담기/해제를 연속으로 누를 때 중복 호출 방지)
   clearTimeout(_planGuideDebounce);
   _planGuideDebounce = setTimeout(_fetchPlanGuideAsync, 700);
+  // 캘린더 탭이 열려 있으면 자동 갱신 (담은 공고만 표시되는 정책)
+  if (document.getElementById("pane-calendar")?.classList.contains("active")) {
+    loadCalendar();
+  }
 }
 
 function _renderPickedUiFor(id) {

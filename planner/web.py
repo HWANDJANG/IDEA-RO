@@ -1874,7 +1874,12 @@ class Handler(BaseHTTPRequestHandler):
         self._send_ics(ics, filename=f"{safe or 'folder'}-schedule.ics")
 
     def _handle_schedule_all(self) -> None:
-        """캘린더 탭용: 모든 폴더의 일정을 folder 메타와 함께 반환. (사용자 본인 것만)"""
+        """캘린더 탭용: 라이브러리에 담은 공고의 일정만 반환.
+
+        라이브러리 (user_picked_announcements) 와 폴더 (attachment_folders.announcement_id)
+        가 매칭되는 것만 표시. 옛 폴더 (라이브러리 외) 의 일정은 안 보이게.
+        announcement_id 가 NULL 인 폴더 (수동 생성 등) 는 항상 표시 (사용자가 직접 만든 것).
+        """
         user_id = self._require_user_id()
         if user_id is None: return
         if not DB_PATH.exists():
@@ -1883,20 +1888,41 @@ class Handler(BaseHTTPRequestHandler):
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         try:
-            events = [dict(r) for r in conn.execute(
-                "SELECT e.id, e.folder_id, e.file_hash, e.title, e.type, "
-                "       e.date_start, e.date_end, e.time, e.note, e.source_page, "
-                "       f.name AS folder_name "
-                "FROM announcement_schedule_events e "
-                "JOIN attachment_folders f ON f.id = e.folder_id "
-                "WHERE e.user_id = ? "
-                "ORDER BY e.date_start, COALESCE(e.time,''), e.id",
+            # 1) 라이브러리에 담은 공고 id 집합
+            picked_ids = {r["announcement_id"] for r in conn.execute(
+                "SELECT announcement_id FROM user_picked_announcements WHERE user_id=?",
+                (user_id,),
+            )}
+            # 2) 사용자 폴더 (announcement_id 포함) → 라이브러리 매칭 필터
+            #    - announcement_id IS NULL → 항상 표시 (사용자 수동 폴더)
+            #    - 그 외 → picked_ids 에 있는 것만
+            all_folders = [dict(r) for r in conn.execute(
+                "SELECT id, name, announcement_id FROM attachment_folders "
+                "WHERE user_id=? ORDER BY id",
                 (user_id,),
             )]
-            folders = [dict(r) for r in conn.execute(
-                "SELECT id, name FROM attachment_folders WHERE user_id=? ORDER BY id",
-                (user_id,),
-            )]
+            visible_folder_ids = {
+                f["id"] for f in all_folders
+                if f.get("announcement_id") is None
+                or int(f["announcement_id"]) in picked_ids
+            }
+            folders = [f for f in all_folders if f["id"] in visible_folder_ids]
+
+            # 3) 이벤트도 visible_folder_ids 안의 것만
+            if visible_folder_ids:
+                placeholders = ",".join("?" * len(visible_folder_ids))
+                events = [dict(r) for r in conn.execute(
+                    f"SELECT e.id, e.folder_id, e.file_hash, e.title, e.type, "
+                    f"       e.date_start, e.date_end, e.time, e.note, e.source_page, "
+                    f"       f.name AS folder_name "
+                    f"FROM announcement_schedule_events e "
+                    f"JOIN attachment_folders f ON f.id = e.folder_id "
+                    f"WHERE e.user_id = ? AND e.folder_id IN ({placeholders}) "
+                    f"ORDER BY e.date_start, COALESCE(e.time,''), e.id",
+                    (user_id, *visible_folder_ids),
+                )]
+            else:
+                events = []
         finally:
             conn.close()
         self._send_json({"events": events, "folders": folders})
