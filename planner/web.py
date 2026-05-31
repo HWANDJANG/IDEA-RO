@@ -1264,6 +1264,11 @@ class Handler(BaseHTTPRequestHandler):
             folder_id_str = path[len("/api/folders/"):].strip("/")
             self._handle_folder_delete(folder_id_str)
             return
+        # 폴더 단위 일정 일괄 삭제 — /api/schedule/folder/{folder_id} (단일 이벤트보다 먼저 체크)
+        if path.startswith("/api/schedule/folder/"):
+            folder_id_str = path[len("/api/schedule/folder/"):].strip("/")
+            self._handle_schedule_delete_by_folder(folder_id_str)
+            return
         if path.startswith("/api/schedule/"):
             event_id_str = path[len("/api/schedule/"):].strip("/")
             self._handle_schedule_delete(event_id_str)
@@ -1992,6 +1997,41 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             conn.close()
         self._send_json({"deleted_event": event_id})
+
+    def _handle_schedule_delete_by_folder(self, folder_id_str: str) -> None:
+        """폴더(공고) 단위 일정 일괄 영구 삭제.
+        DELETE /api/schedule/folder/{folder_id}
+        해당 폴더의 모든 announcement_schedule_events 삭제 (folder 자체 + 첨부는 보존).
+        """
+        user_id = self._require_user_id()
+        if user_id is None: return
+        try:
+            folder_id = int(folder_id_str)
+        except ValueError:
+            self._send_json({"error": "invalid folder id"}, status=400)
+            return
+        if not DB_PATH.exists():
+            self._send_json({"error": "db not found"}, status=500)
+            return
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            # 폴더 소유 확인 (남의 폴더 일정은 못 지움)
+            row = conn.execute(
+                "SELECT id FROM attachment_folders WHERE id=? AND user_id=?",
+                (folder_id, user_id),
+            ).fetchone()
+            if not row:
+                conn.close()
+                self._send_json({"error": "folder not found or not yours"}, status=404)
+                return
+            cur = conn.execute(
+                "DELETE FROM announcement_schedule_events WHERE folder_id=? AND user_id=?",
+                (folder_id, user_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self._send_json({"folder_id": folder_id, "deleted_count": cur.rowcount})
 
     def _handle_attachment_get(self, file_hash: str) -> None:
         from planner.analyzer.storage import load_analysis
