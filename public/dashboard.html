@@ -1008,6 +1008,62 @@
   }
   .ann-panel-close:hover { color: var(--text); background: white; }
 
+  /* L3: 첨부 분석 상태 띠 — 헤더 하단 */
+  .ann-panel-attach {
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .ann-panel-attach:empty { margin-top: 0; }
+  .ann-attach-bar {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 8px 11px; border-radius: 8px;
+    background: white; border: 1px solid var(--border);
+  }
+  .ann-attach-bar.has-problem { border-color: #FCA5A5; background: #FEF2F2; }
+  .ann-attach-bar.all-ok      { border-color: #BBF7D0; background: #F0FDF4; }
+  .ann-attach-bar.loading     { color: var(--muted); font-style: italic; }
+  .ann-attach-bar.empty       { border-color: #FCD9A1; background: #FFF7ED; color: #92400E; }
+  .ann-attach-line {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-weight: 600; color: var(--text);
+  }
+  .ann-attach-line .ok-cnt   { color: #047857; }
+  .ann-attach-line .warn-cnt { color: #991B1B; }
+  .ann-attach-toggle {
+    margin-left: auto;
+    padding: 2px 8px; border-radius: 999px;
+    background: transparent; border: 1px solid currentColor;
+    font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;
+    color: #991B1B;
+  }
+  .ann-attach-toggle:hover { background: white; }
+  .ann-attach-missing {
+    margin-top: 6px; padding: 8px 10px;
+    background: white; border: 1px solid #FCA5A5; border-radius: 6px;
+    font-size: 11.5px; color: var(--text);
+    display: none;
+  }
+  .ann-attach-missing.show { display: block; }
+  .ann-attach-missing-item {
+    padding: 4px 0; border-bottom: 1px dashed rgba(0,0,0,0.06);
+    line-height: 1.45;
+  }
+  .ann-attach-missing-item:last-child { border-bottom: none; }
+  .ann-attach-missing-fname {
+    font-weight: 600; color: var(--text);
+    overflow-wrap: anywhere;
+  }
+  .ann-attach-missing-reason {
+    color: #991B1B; font-size: 11px; margin-top: 2px;
+  }
+  .ann-attach-missing-action {
+    display: inline-block; margin-top: 4px;
+    padding: 3px 9px; border-radius: 6px;
+    background: var(--accent); color: white; border: none;
+    font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  .ann-attach-missing-action:hover { background: #BF4715; }
+
   /* 탭 바 */
   .ann-panel-tabs {
     display: flex; gap: 2px; padding: 0 14px;
@@ -4237,6 +4293,8 @@
         </div>
         <button class="ann-panel-close" onclick="closeAnnPanel()" title="닫기">×</button>
       </div>
+      <!-- L3: 첨부 분석 상태 띠 — 패널 열림 시 자동 로드 -->
+      <div class="ann-panel-attach" id="ann-panel-attach"></div>
     </div>
     <div class="ann-panel-tabs" role="tablist">
       <button class="ann-panel-tab active" data-tab="guide" onclick="switchAnnPanelTab('guide')">✨ 가이드</button>
@@ -9756,6 +9814,143 @@ async function openAnnPanel(annId, tab) {
   panel.classList.add("show");
   panel.setAttribute("aria-hidden", "false");
   switchAnnPanelTab(tab || _annPanelCurrentTab || "guide");
+  // L3: 첨부 분석 상태 띠 — 패널 열림 시 항상 로드 (탭 무관, 헤더 영역)
+  _loadAnnPanelAttachBar(annId);
+}
+
+// L3: 첨부 분석 상태 띠 — 패널 헤더에 표시. fetch 미완료면 자동 trigger.
+async function _loadAnnPanelAttachBar(annId) {
+  const bar = document.getElementById("ann-panel-attach");
+  if (!bar) return;
+  bar.innerHTML = `<div class="ann-attach-bar loading">📎 첨부 분석 확인 중...</div>`;
+  try {
+    const res = await fetch(`/api/announcements/${annId}/auto-attachments`);
+    if (!res.ok) {
+      bar.innerHTML = "";
+      return;
+    }
+    const data = await res.json();
+    // 다른 공고로 전환됐으면 그리지 않음 (race)
+    if (_annPanelCurrentId !== annId) return;
+    _renderAnnPanelAttachBar(annId, data);
+  } catch (_) {
+    bar.innerHTML = "";
+  }
+}
+
+function _renderAnnPanelAttachBar(annId, data) {
+  const bar = document.getElementById("ann-panel-attach");
+  if (!bar) return;
+  const attachments = data.attachments || [];
+
+  // 비어있고 로그인된 상태면 자동 fetch trigger CTA
+  if (!attachments.length) {
+    if (typeof CURRENT_USER !== "undefined" && CURRENT_USER) {
+      bar.innerHTML = `
+        <div class="ann-attach-bar empty">
+          <div class="ann-attach-line">
+            <span>📎</span>
+            <span>아직 자동 분석 안 됨</span>
+            <button class="ann-attach-toggle" style="color:#92400E" onclick="_triggerAttachAndReload(${annId})">🚀 지금 분석 시작</button>
+          </div>
+        </div>`;
+    } else {
+      bar.innerHTML = "";
+    }
+    return;
+  }
+
+  const done    = attachments.filter(x => x.status === "done");
+  const skipped = attachments.filter(x => x.status === "skipped");
+  const failed  = attachments.filter(x => x.status === "failed");
+  const problems = [...failed, ...skipped];
+
+  if (problems.length === 0) {
+    // 모두 분석 완료
+    bar.innerHTML = `
+      <div class="ann-attach-bar all-ok">
+        <div class="ann-attach-line">
+          <span>📎</span>
+          <span><span class="ok-cnt">✅ ${done.length}건 모두 분석 완료</span> — 답변에 활용됩니다</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // 처리 안 된 게 있음 — 펼치기 가능
+  const missingHtml = problems.map(x => {
+    const ext = ((x.original_filename || "").toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || "";
+    const info = _humanizeAttachmentFailureCompact(x, ext);
+    return `
+      <div class="ann-attach-missing-item">
+        <div class="ann-attach-missing-fname">${escapeHtml(x.original_filename || "(이름 없음)")}</div>
+        <div class="ann-attach-missing-reason">⚠ ${escapeHtml(info.label)}${info.hint ? " — " + escapeHtml(info.hint) : ""}</div>
+        ${info.action === "attach"
+          ? `<button class="ann-attach-missing-action" onclick="openAttachPdfByAnnId(${annId})">+ 직접 첨부</button>`
+          : info.action === "retry"
+          ? `<button class="ann-attach-missing-action" onclick="_triggerAttachAndReload(${annId}, true)">🔄 다시 시도</button>`
+          : ""}
+      </div>`;
+  }).join("");
+
+  bar.innerHTML = `
+    <div class="ann-attach-bar has-problem">
+      <div class="ann-attach-line">
+        <span>📎</span>
+        <span><span class="ok-cnt">분석 ${done.length}건</span> · <span class="warn-cnt">⚠️ ${problems.length}건 누락</span></span>
+        <button class="ann-attach-toggle" onclick="_toggleAnnAttachMissing(this)">자세히 ▾</button>
+      </div>
+      <div class="ann-attach-missing">${missingHtml}</div>
+    </div>`;
+}
+
+function _toggleAnnAttachMissing(btn) {
+  const wrap = btn.closest(".ann-attach-bar");
+  const missing = wrap.querySelector(".ann-attach-missing");
+  if (!missing) return;
+  const open = missing.classList.toggle("show");
+  btn.textContent = open ? "접기 ▴" : "자세히 ▾";
+}
+
+async function _triggerAttachAndReload(annId, force = false) {
+  const bar = document.getElementById("ann-panel-attach");
+  if (bar) {
+    bar.innerHTML = `<div class="ann-attach-bar loading">⏳ 공고 페이지에서 자료 가져오는 중... (10~30초)</div>`;
+  }
+  try {
+    await fetch(`/api/announcements/${annId}/auto-fetch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force }),
+    });
+  } catch (_) {}
+  // 분석 탭 캐시도 무효화 (다음 탭 진입 시 새로 로드)
+  _annPanelLoaded.delete(`${annId}:analysis`);
+  await _loadAnnPanelAttachBar(annId);
+}
+
+// 헤더 띠용 compact 버전 — 더 짧은 라벨
+function _humanizeAttachmentFailureCompact(x, ext) {
+  if (x.status === "skipped") {
+    const reason = x.skipped_reason || "";
+    if (reason === "unsupported_format") {
+      const label = ext ? `${ext.toUpperCase()} 지원 안 됨` : "지원 안 되는 포맷";
+      return { label, hint: "원문에서 받아 직접 첨부 필요", action: "attach" };
+    }
+    if (reason === "too_large")       return { label: "파일 너무 큼", hint: "압축 후 직접 첨부", action: "attach" };
+    if (reason === "download_failed") return { label: "다운로드 실패", hint: "원문에서 받아 직접 첨부", action: "attach" };
+    return { label: "건너뜀", hint: reason || "", action: "attach" };
+  }
+  const err = (x.error_message || "").toLowerCase();
+  if (err.includes("html") || err.includes("text/html"))
+    return { label: "다운로드 차단됨", hint: "사이트가 자동 다운 차단 — 원문에서 받아 첨부", action: "attach" };
+  if (err.includes("magic") || err.includes("not valid") || err.includes("ole2"))
+    return { label: "파일 손상 또는 잘못된 포맷", hint: "원본을 직접 첨부해주세요", action: "attach" };
+  if (err.includes("analyze_failed") || err.includes("non-json") || err.includes("unterminated"))
+    return { label: "분석 중 오류", hint: "🔄 다시 시도", action: "retry" };
+  if (err.includes("timeout"))
+    return { label: "시간 초과", hint: "🔄 다시 시도", action: "retry" };
+  return { label: "분석 실패", hint: (x.error_message || "").trim().slice(0, 60), action: "retry" };
 }
 
 function closeAnnPanel() {
