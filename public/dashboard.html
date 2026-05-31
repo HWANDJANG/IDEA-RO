@@ -704,65 +704,7 @@
   }
   .cal-legend .leg-hidden-summary b { color: var(--text); }
 
-  /* 카테고리 처리 모달 — 숨기기 vs 영구 삭제 */
-  .cfa-overlay {
-    position: fixed; inset: 0;
-    background: rgba(26,23,20,0.4);
-    display: none; align-items: center; justify-content: center;
-    z-index: 100;
-    padding: 20px;
-  }
-  .cfa-overlay.show { display: flex; }
-  .cfa-modal {
-    background: white; border-radius: 14px;
-    padding: 22px 24px;
-    max-width: 440px; width: 100%;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
-    animation: cfaIn 0.16s ease both;
-  }
-  @keyframes cfaIn {
-    from { opacity: 0; transform: translateY(8px) scale(0.98); }
-    to   { opacity: 1; transform: none; }
-  }
-  .cfa-title {
-    font-size: 15px; font-weight: 700; color: var(--text);
-    line-height: 1.4;
-    overflow: hidden; text-overflow: ellipsis;
-    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
-  }
-  .cfa-sub {
-    margin-top: 6px; font-size: 13px; color: var(--muted);
-  }
-  .cfa-sub b { color: var(--accent); font-weight: 700; }
-  .cfa-options {
-    margin-top: 18px; display: flex; flex-direction: column; gap: 8px;
-  }
-  .cfa-opt {
-    text-align: left; padding: 12px 14px;
-    border-radius: 10px;
-    background: white; border: 1.5px solid var(--border-strong);
-    cursor: pointer; font-family: inherit;
-    transition: background 0.12s, border-color 0.12s;
-  }
-  .cfa-opt:hover { background: var(--bg-subtle); }
-  .cfa-opt.cfa-hide:hover { border-color: var(--primary, #4A6BC9); }
-  .cfa-opt.cfa-del:hover { border-color: #991B1B; background: #FEF2F2; }
-  .cfa-opt-h {
-    font-size: 14px; font-weight: 700; color: var(--text);
-  }
-  .cfa-opt-sub {
-    margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.45;
-  }
-  .cfa-foot {
-    margin-top: 14px; text-align: right;
-  }
-  .cfa-cancel {
-    padding: 6px 14px; border-radius: 7px;
-    background: transparent; border: 1px solid var(--border);
-    color: var(--muted); cursor: pointer; font-family: inherit;
-    font-size: 12px; font-weight: 600;
-  }
-  .cfa-cancel:hover { background: var(--bg-subtle); color: var(--text); }
+  /* (카테고리 처리 모달 CSS 제거 — [×] 는 즉시 숨김으로 단순화. 영구 삭제는 라이브러리에서 빼는 걸로 충분.) */
   .cal-export { display: flex; gap: 6px; align-items: center; }
 
   /* 외부 캘린더 등록 일정 (취소 가능) */
@@ -4474,12 +4416,6 @@
       <div class="day-popover-body" id="day-popover-body"></div>
     </div>
 
-    <!-- 카테고리(공고) 단위 숨기기/영구 삭제 선택 모달 -->
-    <div class="cfa-overlay" id="cal-folder-action-overlay" onclick="if (event.target.id==='cal-folder-action-overlay') _closeCalFolderActionModal()">
-      <div class="cfa-modal">
-        <div id="cal-folder-action-body"></div>
-      </div>
-    </div>
   </section>
 
   <!-- 탭 5: 기업 프로필 (편집 가능 폼) -->
@@ -9738,77 +9674,18 @@ function _setHiddenFolderIds(setLike) {
   } catch (_) {}
 }
 
-// 라벨의 [×] 클릭 — 숨기기/영구 삭제 선택 모달 표시
+// 라벨의 [×] 클릭 — 즉시 숨김 (모달 없음, localStorage)
+// 영구 삭제가 필요하면 라이브러리에서 그 공고를 빼면 자동으로 캘린더에서 사라짐.
 function _hideCalFolder(folderId) {
   folderId = parseInt(folderId, 10);
-  const folder = (CAL_DATA.folders || []).find(f => f.id === folderId);
-  const cnt = (CAL_DATA.events || []).filter(ev => ev.folder_id === folderId).length;
-  const name = folder?.name || "이 공고";
-  _showCalFolderActionModal(folderId, name, cnt);
-}
-
-function _calFolderHideOnly(folderId) {
-  // 기존 숨기기 동작 — localStorage 만, DB 그대로
   const s = _getHiddenFolderIds();
-  s.add(parseInt(folderId, 10));
+  s.add(folderId);
   _setHiddenFolderIds(s);
+  // 선택 상태도 정리 (숨긴 폴더의 이벤트가 선택돼 있으면 해제)
   for (const ev of (CAL_DATA.events || [])) {
     if (ev.folder_id === folderId && CAL_SELECTED.has(ev.id)) CAL_SELECTED.delete(ev.id);
   }
-  _closeCalFolderActionModal();
   renderCalendar();
-}
-
-async function _calFolderDeletePermanent(folderId, count) {
-  if (!confirm(`정말로 이 공고의 일정 ${count}건을 영구 삭제할까요?\n복구할 수 없습니다.`)) return;
-  try {
-    const res = await fetch(`/api/schedule/folder/${folderId}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      alert("삭제 실패: " + (data.error || res.status));
-      return;
-    }
-    // 혹시 이전에 숨김 처리됐던 거면 정리
-    const s = _getHiddenFolderIds();
-    s.delete(parseInt(folderId, 10));
-    _setHiddenFolderIds(s);
-    // 선택 상태 정리
-    for (const ev of (CAL_DATA.events || [])) {
-      if (ev.folder_id === folderId && CAL_SELECTED.has(ev.id)) CAL_SELECTED.delete(ev.id);
-    }
-    _closeCalFolderActionModal();
-    await loadCalendar();
-  } catch (e) {
-    alert("삭제 실패: " + e.message);
-  }
-}
-
-function _showCalFolderActionModal(folderId, name, count) {
-  const ov = document.getElementById("cal-folder-action-overlay");
-  const body = document.getElementById("cal-folder-action-body");
-  if (!ov || !body) return;
-  body.innerHTML = `
-    <div class="cfa-title">"${escapeHtml(name)}"</div>
-    <div class="cfa-sub">이 공고의 일정 <b>${count}</b>건을 어떻게 처리할까요?</div>
-    <div class="cfa-options">
-      <button class="cfa-opt cfa-hide" onclick="_calFolderHideOnly(${folderId})">
-        <div class="cfa-opt-h">🙈 숨기기</div>
-        <div class="cfa-opt-sub">화면에서만 가려요. 언제든 다시 복원 가능 · DB 보존</div>
-      </button>
-      <button class="cfa-opt cfa-del" onclick="_calFolderDeletePermanent(${folderId}, ${count})">
-        <div class="cfa-opt-h">🗑️ 영구 삭제</div>
-        <div class="cfa-opt-sub">일정 ${count}건을 DB 에서 완전히 지워요 · 복구 불가</div>
-      </button>
-    </div>
-    <div class="cfa-foot">
-      <button class="cfa-cancel" onclick="_closeCalFolderActionModal()">취소</button>
-    </div>
-  `;
-  ov.classList.add("show");
-}
-
-function _closeCalFolderActionModal() {
-  document.getElementById("cal-folder-action-overlay")?.classList.remove("show");
 }
 
 function _unhideCalFolder(folderId) {
