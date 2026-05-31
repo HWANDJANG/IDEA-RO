@@ -1,7 +1,7 @@
 """Google Gemini 프로바이더.
 
-- 기본 모델: `gemini-2.5-flash-lite` (가장 저렴, 한국어 OK, JSON 스키마 강제 지원).
-  품질이 부족하면 `gemini-2.5-flash` 또는 `gemini-2.5-pro` 로 LLM_MODEL 만 바꾸면 됨.
+- 기본 모델: `gemini-3.1-flash-lite` (Gemini 3.1 라인의 경량 모델).
+  성능 우선 시 `gemini-3.1-pro` 또는 `gemini-2.5-pro` 등으로 LLM_MODEL 변경 가능.
 - Google 의 신규 SDK(`google-genai`, `from google import genai`) 사용.
 - JSON 강제는 `response_mime_type="application/json"` + `response_schema` 로 처리.
 - Gemini 의 JSON Schema 는 `additionalProperties` / `$ref` / `allOf` 등을 거부하므로
@@ -20,7 +20,7 @@ from google.genai import errors as genai_errors
 from .base import LLMError, LLMProvider
 
 
-DEFAULT_MODEL = "gemini-2.5-flash-lite"
+DEFAULT_MODEL = "gemini-3.1-flash-lite"
 
 
 # Gemini 가 무시하거나 거부하는 JSON Schema 키워드
