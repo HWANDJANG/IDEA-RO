@@ -914,7 +914,19 @@ def _load_my_docs(conn: sqlite3.Connection, user_id: int) -> list[dict]:
     return result
 
 
-def _load_active_announcements(conn: sqlite3.Connection, limit: int = 500) -> list[dict]:
+def _load_active_announcements(
+    conn: sqlite3.Connection,
+    limit: int = 500,
+    require_analyzed: bool = False,
+) -> list[dict]:
+    """진행중 공고 로드. require_analyzed=True 면 첨부 분석 (status=done) 있는 공고만.
+    AI 추천 시연 품질을 위해 분석 안 된 공고는 추천 풀에서 제외 가능."""
+    extra = ""
+    if require_analyzed:
+        extra = (
+            "  AND EXISTS (SELECT 1 FROM announcement_auto_attachments aa "
+            "              WHERE aa.announcement_id = a.id AND aa.status = 'done') "
+        )
     q = (
         "SELECT a.id, a.title, a.start_date, a.end_date, a.d_day, "
         "       a.department, a.contact, a.detail_url, a.content_text, a.raw_meta, "
@@ -922,6 +934,7 @@ def _load_active_announcements(conn: sqlite3.Connection, limit: int = 500) -> li
         "FROM announcements a JOIN sources s ON s.id = a.source_id "
         "WHERE a.end_date IS NOT NULL AND a.end_date != '' "
         "  AND substr(a.end_date,1,10) >= date('now') "
+        f"{extra}"
         "ORDER BY a.end_date ASC LIMIT ?"
     )
     return [dict(r) for r in conn.execute(q, (limit,))]
@@ -993,7 +1006,11 @@ def compose_action_plan(
     try:
         profile = _load_profile(conn, user_id)
         my_docs = _load_my_docs(conn, user_id)
-        anns = _load_active_announcements(conn)
+        # 시연 품질을 위해 첨부 분석된 공고만 추천 풀에 포함.
+        # 분석 없는 공고가 0건이면 fallback 으로 전체 로드 (사용자가 0건 추천 받는 사고 방지).
+        anns = _load_active_announcements(conn, require_analyzed=True)
+        if not anns:
+            anns = _load_active_announcements(conn, require_analyzed=False)
     finally:
         conn.close()
 

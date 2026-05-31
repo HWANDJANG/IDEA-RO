@@ -6448,13 +6448,17 @@ async function renderAnnouncements() {
     }
   }));
 
-  // ─── 적합 순으로 정렬: 자격 통과 우선 → 프로필 점수 → 서류 충족도 → 마감일 ───
+  // ─── 적합 순 정렬: 자격 → (분석된 공고 우선) → 프로필 점수 → 서류 충족 → 마감일 ───
   const FULFILL_ORDER = { complete: 0, partial: 1, none: 2 };
   results.sort((A, B) => {
     const a = A.match || {}, b = B.match || {};
     const ae = a.profile_fit?.eligible ? 0 : 1;
     const be = b.profile_fit?.eligible ? 0 : 1;
     if (ae !== be) return ae - be;
+    // 분석된 공고 우선 (시연 품질) — /api/announcements 의 has_analyzed 활용
+    const aa = A.announcement.has_analyzed ? 0 : 1;
+    const ba = B.announcement.has_analyzed ? 0 : 1;
+    if (aa !== ba) return aa - ba;
     const aps = a.profile_fit?.score ?? 0;
     const bps = b.profile_fit?.score ?? 0;
     if (aps !== bps) return bps - aps;
