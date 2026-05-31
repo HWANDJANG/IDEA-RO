@@ -855,6 +855,119 @@
     display: flex; flex-direction: column; gap: 18px;
   }
 
+  /* ─── 내 라이브러리 (#pane-library) — 담은 공고 카드 + 채팅 preview ─── */
+  .lib-hero {
+    display: flex; align-items: flex-start; gap: 14px;
+    margin: 4px 0 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .lib-hero-main { flex: 1; min-width: 0; }
+  .lib-hero-title {
+    margin: 0; font-size: 22px; font-weight: 800; color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .lib-hero-sub {
+    margin: 6px 0 0; font-size: 13px; color: var(--text); opacity: 0.75;
+  }
+  .lib-filter {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;
+  }
+  .lib-filter-btn {
+    padding: 5px 12px; border-radius: 999px;
+    background: white; border: 1px solid var(--border-strong);
+    font-size: 12px; font-weight: 600; color: var(--text);
+    cursor: pointer; font-family: inherit;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .lib-filter-btn:hover { background: var(--bg-subtle); border-color: var(--accent); }
+  .lib-filter-btn.active {
+    background: var(--accent); color: white; border-color: var(--accent);
+  }
+
+  .lib-cards { display: flex; flex-direction: column; gap: 11px; }
+  .lib-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 17px;
+    display: flex; flex-direction: column; gap: 9px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .lib-card:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(26,23,20,.05); }
+  .lib-card-head {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  }
+  .lib-card-title {
+    font-size: 14.5px; font-weight: 700; color: var(--text); line-height: 1.4;
+    flex: 1; min-width: 0;
+  }
+  .lib-card-title a { color: var(--text); text-decoration: none; }
+  .lib-card-title a:hover { color: var(--accent); }
+  .lib-card-meta {
+    font-size: 11.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .lib-card-meta .src {
+    padding: 1px 7px; background: var(--bg-subtle); border-radius: 999px;
+    color: var(--text); font-weight: 600; font-size: 10.5px;
+  }
+  .lib-card-dday {
+    padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .lib-card-dday.urgent { background: #FEE2E2; color: #991B1B; }
+  .lib-card-dday.warn   { background: #FEF3C7; color: #92400E; }
+  .lib-card-dday.calm   { background: #DBEAFE; color: #1E40AF; }
+  .lib-card-dday.past   { background: var(--bg-subtle); color: var(--muted); }
+
+  .lib-chat-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-subtle); border-radius: 8px;
+    font-size: 12.5px; color: var(--text);
+  }
+  .lib-chat-row.empty { color: var(--muted); font-style: italic; }
+  .lib-chat-count {
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+  }
+  .lib-chat-preview {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--muted);
+  }
+  .lib-card-actions {
+    display: flex; gap: 7px; align-items: center; flex-wrap: wrap;
+  }
+  .lib-card-action {
+    padding: 6px 13px; border-radius: 8px;
+    border: 1px solid var(--accent); background: var(--accent); color: white;
+    font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+    transition: background 0.12s;
+  }
+  .lib-card-action:hover { background: #BF4715; }
+  .lib-card-action.secondary {
+    background: white; color: var(--accent);
+  }
+  .lib-card-action.secondary:hover { background: var(--accent-soft); }
+  .lib-card-action.danger {
+    background: white; color: var(--muted); border-color: var(--border-strong);
+    margin-left: auto;
+  }
+  .lib-card-action.danger:hover { color: #991B1B; border-color: #FCA5A5; }
+
+  .lib-empty {
+    padding: 50px 16px; text-align: center; color: var(--muted);
+    font-size: 13px; line-height: 1.7;
+  }
+  .lib-empty .ph-icon { font-size: 38px; opacity: 0.5; display: block; margin-bottom: 10px; }
+  .lib-empty .cta-link {
+    display: inline-block; margin-top: 14px;
+    padding: 9px 18px; border-radius: 9px;
+    background: var(--accent); color: white; text-decoration: none;
+    font-size: 13px; font-weight: 700;
+  }
+  .lib-empty .cta-link:hover { background: #BF4715; }
+
   /* ─── 공고 디테일 사이드 패널 (가이드 / 질문 / 분석 3탭) — Step 1 골격 ─── */
   .ann-panel-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,0); pointer-events: none;
@@ -3713,6 +3826,7 @@
     <button class="tab-btn" data-tab="analyze" style="display:none" aria-hidden="true"><span class="count" id="cnt-attach">0</span></button>
 
     <div class="sb-group-label">마이페이지</div>
+    <button class="tab-btn" data-tab="library"><span class="sb-ic">📚</span>내 라이브러리<span class="count" id="cnt-library">0</span></button>
     <button class="tab-btn" data-tab="my-docs"><span class="sb-ic">📁</span>내 서류<span class="count" id="cnt-my-docs">0</span></button>
     <button class="tab-btn" data-tab="calendar"><span class="sb-ic">📅</span>캘린더<span class="count" id="cnt-cal">0</span></button>
   </nav>
@@ -4000,6 +4114,26 @@
     </div>
   </section>
 
+  <!-- 탭: 내 라이브러리 (담은 공고 + 채팅 이력 모음) -->
+  <section class="pane" id="pane-library">
+    <div class="panel">
+      <div class="lib-hero">
+        <div class="lib-hero-main">
+          <h2 class="lib-hero-title">📚 내 라이브러리</h2>
+          <p class="lib-hero-sub" id="lib-hero-sub">담은 공고와 그 공고에 대한 질문 이력을 한 자리에서 관리하세요.</p>
+        </div>
+        <button class="plan-refresh-mini" onclick="loadLibrary()" title="다시 불러오기">🔄</button>
+      </div>
+      <div class="lib-filter" id="lib-filter" style="display:none">
+        <button class="lib-filter-btn active" data-filter="all" onclick="_setLibraryFilter('all')">전체</button>
+        <button class="lib-filter-btn" data-filter="urgent" onclick="_setLibraryFilter('urgent')">⏰ 마감 임박 (≤14일)</button>
+        <button class="lib-filter-btn" data-filter="hasChat" onclick="_setLibraryFilter('hasChat')">💬 질문 있음</button>
+        <button class="lib-filter-btn" data-filter="noChat" onclick="_setLibraryFilter('noChat')">아직 질문 안 함</button>
+      </div>
+      <div id="lib-body"><div class="empty">불러오는 중...</div></div>
+    </div>
+  </section>
+
   <!-- 탭 4: 캘린더 (모든 폴더의 일정 통합) -->
   <section class="pane" id="pane-calendar">
     <div class="panel">
@@ -4277,6 +4411,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
       return;
     }
     if (btn.dataset.tab === "plan" && !window._planLoaded) loadPlan();
+    if (btn.dataset.tab === "library") loadLibrary();
     if (btn.dataset.tab === "my-docs") renderMyDocs();
     if (btn.dataset.tab === "analyze") {
       loadFolders().then(loadAttachments);
@@ -4976,9 +5111,177 @@ async function _loadPickedFromDb() {
       const id = parseInt(it.announcement_id, 10);
       if (Number.isFinite(id)) _planPicked.add(id);
     }
-    // 현재 표시된 카드들의 UI 만 업데이트 (있는 것만)
+    // 사이드바 배지 + 현재 표시된 카드들의 UI 업데이트
+    const badge = document.getElementById("cnt-library");
+    if (badge) badge.textContent = _planPicked.size;
     _planPicked.forEach(_renderPickedUiFor);
   } catch (_) {}
+}
+
+// ─── 내 라이브러리 페이지 (L2) ──────────────────────────────────────
+let _libraryLast = [];      // 마지막 fetch 결과
+let _libraryFilter = "all"; // 'all' | 'urgent' | 'hasChat' | 'noChat'
+
+async function loadLibrary() {
+  const body = document.getElementById("lib-body");
+  const filterBar = document.getElementById("lib-filter");
+  const sub = document.getElementById("lib-hero-sub");
+  if (!body) return;
+
+  if (typeof CURRENT_USER === "undefined" || !CURRENT_USER) {
+    body.innerHTML = `
+      <div class="lib-empty">
+        <span class="ph-icon">🔒</span>
+        <div>로그인하면 관심 공고를 라이브러리에 모으고<br>각 공고별로 질문 이력을 관리할 수 있어요.</div>
+        <a class="cta-link" href="/api/auth/kakao/login?next=/dashboard">💬 카카오로 시작</a>
+      </div>`;
+    if (filterBar) filterBar.style.display = "none";
+    return;
+  }
+
+  body.innerHTML = `<div class="empty">불러오는 중...</div>`;
+  try {
+    const res = await fetch("/api/library");
+    if (!res.ok) {
+      body.innerHTML = `<div class="lib-empty"><span class="ph-icon">⚠️</span><div>로드 실패 (${res.status})</div></div>`;
+      return;
+    }
+    const data = await res.json();
+    _libraryLast = data.items || [];
+    // 사이드바 배지 + sub 동기화
+    const badge = document.getElementById("cnt-library");
+    if (badge) badge.textContent = _libraryLast.length;
+    if (sub) {
+      sub.textContent = _libraryLast.length
+        ? `${_libraryLast.length}건의 관심 공고를 모아두셨어요. 카드를 클릭하면 그 공고에 대한 가이드/질문/분석을 볼 수 있어요.`
+        : "관심 공고와 그 공고에 대한 질문 이력을 한 자리에서 관리하세요.";
+    }
+    if (filterBar) filterBar.style.display = _libraryLast.length ? "flex" : "none";
+    _renderLibrary();
+  } catch (e) {
+    body.innerHTML = `<div class="lib-empty"><span class="ph-icon">⚠️</span><div>${escapeHtml(e.message || String(e))}</div></div>`;
+  }
+}
+
+function _setLibraryFilter(f) {
+  _libraryFilter = f;
+  document.querySelectorAll(".lib-filter-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.filter === f);
+  });
+  _renderLibrary();
+}
+
+function _renderLibrary() {
+  const body = document.getElementById("lib-body");
+  if (!body) return;
+  const items = _libraryLast || [];
+  if (!items.length) {
+    body.innerHTML = `
+      <div class="lib-empty">
+        <span class="ph-icon">📚</span>
+        <div>아직 담은 공고가 없어요.<br>
+          <b>AI 추천 공고</b> 나 <b>공고 둘러보기</b> 에서 마음에 드는 공고를 담아보세요.</div>
+        <button class="cta-link" onclick="document.querySelector('.tab-btn[data-tab=&quot;plan&quot;]').click()" style="border:none;cursor:pointer;font-family:inherit">✨ AI 추천 공고 보러가기</button>
+      </div>`;
+    return;
+  }
+  // 필터
+  const filtered = items.filter(it => {
+    if (_libraryFilter === "urgent") {
+      const d = _libraryDaysLeft(it.end_date);
+      return d != null && d >= 0 && d <= 14;
+    }
+    if (_libraryFilter === "hasChat") return (it.chat_count || 0) > 0;
+    if (_libraryFilter === "noChat")  return !(it.chat_count || 0);
+    return true;
+  });
+  if (!filtered.length) {
+    body.innerHTML = `<div class="lib-empty"><span class="ph-icon">🔍</span><div>현재 필터에 해당하는 공고가 없어요.</div></div>`;
+    return;
+  }
+  body.innerHTML = `<div class="lib-cards">${filtered.map(_renderLibraryCard).join("")}</div>`;
+}
+
+function _libraryDaysLeft(endDate) {
+  if (!endDate) return null;
+  try {
+    const e = new Date(String(endDate).slice(0, 10));
+    if (isNaN(e)) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    return Math.round((e.getTime() - today.getTime()) / 86400000);
+  } catch (_) { return null; }
+}
+
+function _renderLibraryCard(it) {
+  const annId = it.announcement_id;
+  const days = _libraryDaysLeft(it.end_date);
+  let ddBadge = "";
+  if (days != null) {
+    let cls = "calm", text = `D-${days}`;
+    if (days < 0) { cls = "past"; text = "마감"; }
+    else if (days === 0) { cls = "urgent"; text = "D-DAY"; }
+    else if (days <= 7) { cls = "urgent"; text = `D-${days}`; }
+    else if (days <= 30) { cls = "warn"; text = `D-${days}`; }
+    ddBadge = `<span class="lib-card-dday ${cls}">${text}</span>`;
+  }
+  const titleA = it.detail_url
+    ? `<a href="${escapeHtml(it.detail_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(it.title || '')}</a>`
+    : escapeHtml(it.title || '');
+
+  // 채팅 preview
+  const chatN = it.chat_count || 0;
+  let chatRow;
+  if (chatN > 0) {
+    const preview = (it.last_chat_preview || "").trim().slice(0, 80) || "(질문 없음)";
+    chatRow = `
+      <div class="lib-chat-row">
+        <span class="lib-chat-count">💬 ${chatN}</span>
+        <span class="lib-chat-preview">최근: "${escapeHtml(preview)}"</span>
+      </div>`;
+  } else {
+    chatRow = `
+      <div class="lib-chat-row empty">
+        <span>💬 아직 질문 없음 — 이 공고에 대해 무엇이든 물어볼 수 있어요</span>
+      </div>`;
+  }
+
+  return `
+    <div class="lib-card">
+      <div class="lib-card-head">
+        <div style="flex:1; min-width:0;">
+          <div class="lib-card-title">${titleA}</div>
+          <div class="lib-card-meta">
+            <span class="src">${escapeHtml(it.source_name || it.source_code || "")}</span>
+            ${it.department ? `<span>${escapeHtml(it.department)}</span>` : ""}
+            ${it.end_date ? `<span>~${escapeHtml(String(it.end_date).slice(0,10))}</span>` : ""}
+          </div>
+        </div>
+        ${ddBadge}
+      </div>
+      ${chatRow}
+      <div class="lib-card-actions">
+        <button class="lib-card-action" onclick="openAnnPanel(${annId}, 'chat')">💬 질문하기</button>
+        <button class="lib-card-action secondary" onclick="openAnnPanel(${annId}, 'guide')">✨ 가이드</button>
+        <button class="lib-card-action secondary" onclick="openAnnPanel(${annId}, 'analysis')">📊 분석</button>
+        <button class="lib-card-action danger" onclick="_libraryRemove(${annId})" title="라이브러리에서 제외 (채팅 이력은 보존)">× 제외</button>
+      </div>
+    </div>`;
+}
+
+async function _libraryRemove(annId) {
+  if (!confirm("이 공고를 라이브러리에서 제외할까요?\n(채팅 이력은 보존됩니다)")) return;
+  try {
+    const res = await fetch(`/api/library/${annId}`, { method: "DELETE" });
+    if (!res.ok) {
+      alert("제외 실패");
+      return;
+    }
+    _planPicked.delete(annId);
+    _renderPickedUiFor(annId);
+    await loadLibrary();
+  } catch (e) {
+    alert("제외 실패: " + e.message);
+  }
 }
 
 // Step 5: 담은 공고 기반 액션 가이드 (LLM)
