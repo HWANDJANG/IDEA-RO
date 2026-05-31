@@ -1563,6 +1563,39 @@
   .aa-file-status { font-size: 12px; flex-shrink: 0; }
   .aa-file-skipped { background: #FFFBEB; }
   .aa-file-failed  { background: #FEF2F2; }
+  /* 처리 안 됨 — 한 줄에 [이유] [+ 직접 첨부] 같이 배치 */
+  .aa-file-fail-wrap {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+    justify-content: flex-end; flex-wrap: wrap;
+  }
+  .aa-file-fail-bg, .aa-file-skip-bg {
+    flex: 1; min-width: 0; padding: 4px 9px; border-radius: 5px;
+    white-space: normal; text-align: left; line-height: 1.4;
+  }
+  .aa-file-fail-bg { background: #FEF2F2; color: #991B1B; }
+  .aa-file-skip-bg { background: #FFFBEB; color: #92400E; }
+  .aa-file-fail-bg b, .aa-file-skip-bg b { font-weight: 700; margin-right: 4px; }
+  .aa-file-action {
+    flex-shrink: 0;
+    padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;
+    background: white; color: #C2410C; border: 1px solid #FCD9A1;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.12s;
+  }
+  .aa-file-action:hover { background: #FFF7ED; }
+
+  /* 그룹 분리 — done / problem */
+  .aa-group { margin-top: 10px; }
+  .aa-group + .aa-group { margin-top: 14px; }
+  .aa-group-h {
+    font-size: 11.5px; font-weight: 700; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .aa-group-problem .aa-group-h { color: #991B1B; }
+  .aa-group-done    .aa-group-h { color: #047857; }
+  .aa-group-hint { font-weight: 400; color: var(--muted); font-size: 11px; }
+  /* 헤더 카운트의 "처리 안 됨" 강조 */
+  .aa-block-counts .aa-cnt-warn { color: #991B1B; font-weight: 700; }
   .aa-block-foot {
     margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(0,0,0,0.08);
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -6026,16 +6059,75 @@ function renderAutoAnalysisBlock(data, annId, options) {
     const m = (name || "").toLowerCase().match(/\.([a-z0-9]+)$/);
     return m ? m[1] : "";
   };
+  // 미지원 확장자 → 사용자가 어떻게 해야 할지 짧은 액션
   const UNSUPPORTED_HINT = {
-    doc: "DOC → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
-    docx: "DOCX → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
-    xls: "XLS → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
-    xlsx: "XLSX → PDF 로 저장 후 + 내 자료 추가 로 올려주세요",
-    zip: "ZIP → 압축 풀어 안의 PDF/HWP/HWPX 를 + 내 자료 추가 로 올려주세요",
-    alz: "ALZ → 압축 풀어 안의 PDF/HWP/HWPX 를 + 내 자료 추가 로 올려주세요",
+    doc:  "DOC — PDF 로 저장 후 직접 첨부",
+    docx: "DOCX — PDF 로 저장 후 직접 첨부",
+    xls:  "XLS — PDF 로 저장 후 직접 첨부",
+    xlsx: "XLSX — PDF 로 저장 후 직접 첨부",
+    zip:  "ZIP — 압축 풀어 안의 PDF/HWP 첨부",
+    alz:  "ALZ — 압축 풀어 안의 PDF/HWP 첨부",
   };
 
-  const fileListHtml = attachments.map(x => {
+  // 실패/스킵 사유를 사용자 친화 라벨 + 액션으로 분류
+  // returns: { label, hint, action? } — action 은 'attach' | 'retry' | null
+  function _humanizeAttachmentFailure(x, ext) {
+    if (x.status === "skipped") {
+      const reason = x.skipped_reason || "";
+      const hint = UNSUPPORTED_HINT[ext];
+      if (reason === "unsupported_format") {
+        return {
+          label: "지원하지 않는 포맷",
+          hint:  hint || `${ext ? ext.toUpperCase() + ' — ' : ''}PDF/이미지/HWPX/HWP 만 분석 가능`,
+          action: "attach",
+        };
+      }
+      if (reason === "too_large") {
+        return { label: "파일 너무 큼", hint: "10MB 이하로 압축/분할 후 직접 첨부", action: "attach" };
+      }
+      if (reason === "download_failed") {
+        return { label: "다운로드 실패", hint: "원문 페이지에서 직접 다운로드 후 첨부", action: "attach" };
+      }
+      return { label: "건너뜀", hint: reason || "이유 미상", action: "attach" };
+    }
+    if (x.status === "failed") {
+      const err = (x.error_message || "").toLowerCase();
+      if (err.includes("server returned html") || err.includes("html error") || err.includes("content-type=text/html")) {
+        return {
+          label: "다운로드 차단됨",
+          hint:  "사이트가 자동 다운을 막음 — 원문 페이지에서 받아 직접 첨부",
+          action: "attach",
+        };
+      }
+      if (err.includes("magic") || err.includes("not a valid") || err.includes("invalid pdf") || err.includes("ole2")) {
+        return {
+          label: "파일 손상 또는 잘못된 포맷",
+          hint:  "원본이 다른 포맷일 수 있음 — 원문에서 받아 직접 첨부",
+          action: "attach",
+        };
+      }
+      if (err.includes("analyze_failed") || err.includes("non-json") || err.includes("unterminated") || err.includes("max_tokens")) {
+        return {
+          label: "분석 중 오류 (재시도 권장)",
+          hint:  "LLM 응답 파싱 실패 — 🔄 다시 분석 권장",
+          action: "retry",
+        };
+      }
+      if (err.includes("too_large") || err.includes("size limit") || err.includes("too big")) {
+        return { label: "파일 너무 큼", hint: "10MB 이하로 압축 후 직접 첨부", action: "attach" };
+      }
+      if (err.includes("timeout") || err.includes("timed out")) {
+        return { label: "시간 초과", hint: "🔄 다시 분석 시도", action: "retry" };
+      }
+      // 알 수 없는 에러 — raw 메시지 일부 노출
+      const raw = (x.error_message || "").trim().slice(0, 80);
+      return { label: "분석 실패", hint: raw || "원인 미상 — 🔄 다시 분석", action: "retry" };
+    }
+    return null;
+  }
+
+  // 시각적 그룹화 — 처리 안 된 파일을 별도 섹션으로 띄움 (사용자가 먼저 인지)
+  const _renderFileRow = (x) => {
     const ext = _extFromName(x.original_filename);
     const fmtIcon = FMT_ICON[x.file_format] || (UNSUPPORTED_HINT[ext] ? "📦" : "📎");
     const fmtLabel = FMT_LABEL[x.file_format] || (ext ? ext.toUpperCase() : "");
@@ -6055,13 +6147,22 @@ function renderAutoAnalysisBlock(data, annId, options) {
       const wn = (a.warnings?.items || []).length;       if (wn) counts.push(`유의${wn}`);
       const countText = counts.length ? counts.join(" · ") : "내용 없음";
       sub = `<span class="aa-file-sub aa-file-ok">${escapeHtml(countText)}</span>`;
-    } else if (x.status === "skipped") {
-      const hint = UNSUPPORTED_HINT[ext];
-      sub = hint
-        ? `<span class="aa-file-sub aa-file-hint" title="${escapeHtml(hint)}">⚠ ${escapeHtml(hint)}</span>`
-        : `<span class="aa-file-sub">${escapeHtml(x.skipped_reason || "건너뜀")}</span>`;
     } else {
-      sub = `<span class="aa-file-sub aa-file-fail" title="${escapeHtml(x.error_message || '')}">분석 실패</span>`;
+      // failed / skipped — 사용자 친화 메시지 + 액션 버튼
+      const info = _humanizeAttachmentFailure(x, ext);
+      const actionBtn = info?.action === "attach"
+        ? `<button class="aa-file-action" onclick="event.stopPropagation(); openAttachPdfByAnnId(${annId})" title="이 파일을 직접 다운로드해서 올려주세요">+ 직접 첨부</button>`
+        : info?.action === "retry"
+        ? `<button class="aa-file-action" onclick="event.stopPropagation(); triggerAutoFetchForAnnouncement(${annId}, true)" title="이 공고 전체 자료 다시 분석">🔄 다시 시도</button>`
+        : "";
+      const cls = x.status === "failed" ? "aa-file-fail-bg" : "aa-file-skip-bg";
+      sub = `
+        <div class="aa-file-fail-wrap">
+          <span class="aa-file-sub aa-file-${x.status === 'failed' ? 'fail' : 'hint'} ${cls}">
+            <b>${escapeHtml(info?.label || "처리 안 됨")}</b> — ${escapeHtml(info?.hint || "")}
+          </span>
+          ${actionBtn}
+        </div>`;
     }
     const statusIcon = x.status === "done" ? "✅" : (x.status === "skipped" ? "⏭️" : "❌");
     return `
@@ -6071,7 +6172,31 @@ function renderAutoAnalysisBlock(data, annId, options) {
         <span class="aa-file-status" title="${x.status}">${statusIcon}</span>
         ${sub}
       </div>`;
-  }).join("");
+  };
+
+  // done 그룹 (분석 완료) / problem 그룹 (failed + skipped) 분리해서 시각적으로 강조
+  const doneRows    = done.map(_renderFileRow).join("");
+  const problemRows = [...failed, ...skipped].map(_renderFileRow).join("");
+  const problemCount = failed.length + skipped.length;
+
+  let fileListHtml = "";
+  if (problemCount > 0) {
+    fileListHtml += `
+      <div class="aa-group aa-group-problem">
+        <div class="aa-group-h">
+          ⚠️ 처리 안 된 자료 ${problemCount}건
+          <span class="aa-group-hint">— 직접 첨부하시면 분석에 포함됩니다</span>
+        </div>
+        ${problemRows}
+      </div>`;
+  }
+  if (doneRows) {
+    fileListHtml += `
+      <div class="aa-group aa-group-done">
+        <div class="aa-group-h">✅ 분석 완료 ${done.length}건</div>
+        ${doneRows}
+      </div>`;
+  }
 
   const statsHtml = doneCount ? `
     <div class="aa-stats">
@@ -6134,11 +6259,15 @@ function renderAutoAnalysisBlock(data, annId, options) {
     window._aaEventsByAnn[annId] = { events, title: data.title || "" };
   }
 
+  const headCounts = problemCount > 0
+    ? `<span class="aa-block-counts">✅ ${done.length}건 분석 · <span class="aa-cnt-warn">⚠️ ${problemCount}건 처리 안 됨</span></span>`
+    : `<span class="aa-block-counts">✅ ${done.length}건 분석</span>`;
+
   return `
     <div class="aa-block">
       <div class="aa-block-head">
         📊 자동 분석 결과
-        <span class="aa-block-counts">완료 ${done.length} · 건너뜀 ${skipped.length} · 실패 ${failed.length}</span>
+        ${headCounts}
       </div>
       ${statsHtml}
       <div class="aa-files">${fileListHtml}</div>
