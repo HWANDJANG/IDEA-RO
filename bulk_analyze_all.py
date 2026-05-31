@@ -55,6 +55,7 @@ def main():
         ann_id = row["id"]
         title = (row["title"] or "")[:50]
         c = sqlite3.connect(DB_PATH)
+        c.row_factory = sqlite3.Row   # fetch_and_analyze_announcement 가 row["..."] 접근
         try:
             result = fetch_and_analyze_announcement(c, ann_id, max_files=10, force=force)
             attachments = result.get("attachments") or []
