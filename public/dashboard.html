@@ -3005,6 +3005,48 @@
     margin-bottom: 6px; font-size: 13px; line-height: 1.55; color: var(--text);
   }
   .plan-guide-sec li::marker { color: var(--accent); }
+  /* 가이드 항목 — 체크박스 + 텍스트 */
+  .plan-guide-sec ul.plan-guide-items { list-style: none; padding-left: 0; }
+  .plan-guide-sec ul.plan-guide-items li { margin-bottom: 4px; }
+  .plan-guide-item-label {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 5px 8px; border-radius: 6px;
+    cursor: pointer; line-height: 1.5;
+    transition: background 0.12s;
+  }
+  .plan-guide-item-label:hover { background: var(--bg-subtle); }
+  .plan-guide-item-chk {
+    flex-shrink: 0; margin-top: 3px; cursor: pointer;
+    accent-color: var(--accent);
+  }
+  .plan-guide-item-text { flex: 1; color: var(--text); }
+  /* 가이드 하단 — 캘린더 등록 액션 바 */
+  .plan-guide-cal-bar {
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .plan-guide-cal-allbtn {
+    padding: 5px 11px; border-radius: 7px;
+    background: white; border: 1px solid var(--border-strong);
+    font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+    color: var(--text);
+  }
+  .plan-guide-cal-allbtn:hover { background: var(--bg-subtle); border-color: var(--accent); color: var(--accent); }
+  .plan-guide-cal-hint {
+    flex: 1; min-width: 180px;
+    font-size: 11.5px; color: var(--muted);
+  }
+  .plan-guide-cal-btn {
+    padding: 6px 13px; border-radius: 7px;
+    font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+    border: 1px solid transparent;
+    transition: background 0.12s;
+  }
+  .plan-guide-cal-btn.google { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+  .plan-guide-cal-btn.google:hover { background: #fde68a; }
+  .plan-guide-cal-btn.naver  { background: #dcfce7; border-color: #86efac; color: #15803d; }
+  .plan-guide-cal-btn.naver:hover  { background: #bbf7d0; }
   .plan-guide-loading {
     padding: 20px; text-align: center; color: var(--muted); font-size: 13px; font-style: italic;
   }
@@ -5431,6 +5473,9 @@ async function _fetchPlanGuideAsync() {
   }
 }
 
+// 가이드 응답을 전역에 보관 — 캘린더 등록 시 sec/item idx 로 다시 찾음
+const _guideStash = new Map();
+
 function _renderPlanGuide(g, pickedCount) {
   const sections = g.sections || [];
   if (!sections.length) return "";
@@ -5438,17 +5483,43 @@ function _renderPlanGuide(g, pickedCount) {
     ? `<div class="plan-guide-warn"><span class="ic">⚠️</span><span>${escapeHtml(g.key_warning)}</span></div>`
     : "";
   const prioLabel = { high: "긴급", medium: "중요", low: "여유" };
-  const secsHtml = sections.map(sec => `
+
+  // 가이드별 고유 ID — 같은 페이지에 메인 가이드 + 사이드 패널 가이드 동시 떠도 충돌 없게
+  const stashId = `g${Date.now().toString(36)}${Math.floor(Math.random()*1e6).toString(36)}`;
+  _guideStash.set(stashId, g);
+  // 마감일 (단일 공고 가이드) 또는 담은 공고들의 마감 (메인 가이드)
+  const recDeadline = g.recommendation?.end_date ? String(g.recommendation.end_date).slice(0, 10) : null;
+
+  const secsHtml = sections.map((sec, secIdx) => `
     <div class="plan-guide-sec ${escapeHtml(sec.priority || 'low')}">
       <h4>${escapeHtml(sec.week_label || '')} <span class="prio">${escapeHtml(prioLabel[sec.priority] || sec.priority || '')}</span></h4>
-      <ul>${(sec.items || []).map(it => `<li>${escapeHtml(it)}</li>`).join("")}</ul>
+      <ul class="plan-guide-items">${(sec.items || []).map((it, itIdx) => `
+        <li>
+          <label class="plan-guide-item-label">
+            <input type="checkbox" class="plan-guide-item-chk"
+              data-stash="${stashId}" data-sec="${secIdx}" data-it="${itIdx}">
+            <span class="plan-guide-item-text">${escapeHtml(it)}</span>
+          </label>
+        </li>
+      `).join("")}</ul>
     </div>
   `).join("");
+
   const pdfBadge = (g.pdf_analyzed_count > 0)
     ? `<span style="margin-left:8px; padding:3px 9px; border-radius:999px; background:var(--accent); color:#fff; font-size:11px; font-weight:700">📄 PDF ${g.pdf_analyzed_count}건 활용</span>`
     : "";
+
+  // 캘린더 등록 액션 바
+  const calBar = `
+    <div class="plan-guide-cal-bar">
+      <button class="plan-guide-cal-allbtn" onclick="_guideToggleAll('${stashId}')">전체 선택/해제</button>
+      <span class="plan-guide-cal-hint" id="${stashId}-hint">체크한 항목을 캘린더에 종일 일정으로 등록합니다.</span>
+      <button class="plan-guide-cal-btn google" onclick="_guideToCalendar('${stashId}', 'google')">📅 Google 캘린더에 추가</button>
+      <button class="plan-guide-cal-btn naver"  onclick="_guideToCalendar('${stashId}', 'naver')">📅 네이버 캘린더에 추가</button>
+    </div>`;
+
   return `
-    <div class="plan-guide-wrap">
+    <div class="plan-guide-wrap" data-stash="${stashId}" data-deadline="${recDeadline || ''}">
       <div class="plan-guide-head">
         <div>
           <div class="plan-guide-title"><span class="nv-icon">✨</span> AI 액션 가이드 · 담은 ${pickedCount}건 기반${pdfBadge}</div>
@@ -5457,8 +5528,90 @@ function _renderPlanGuide(g, pickedCount) {
       </div>
       ${warnHtml}
       <div class="plan-guide-secs">${secsHtml}</div>
+      ${calBar}
     </div>
   `;
+}
+
+// 가이드 — 전체 선택/해제 토글
+function _guideToggleAll(stashId) {
+  const wrap = document.querySelector(`.plan-guide-wrap[data-stash="${stashId}"]`);
+  if (!wrap) return;
+  const boxes = wrap.querySelectorAll(".plan-guide-item-chk");
+  const allOn = Array.from(boxes).every(b => b.checked);
+  boxes.forEach(b => { b.checked = !allOn; });
+}
+
+// section.week_label 또는 priority 기반으로 날짜 추정.
+// 우선순위: week_label 안의 "M월 D일 ~ M월 D일" → 시작일 사용
+//          그 외 priority 'high'=오늘, 'medium'=+7일, 'low'=+14일
+//          단일 공고 가이드면 마감일 기준 -3일/-7일/-14일 우선
+function _guideEstimateDate(weekLabel, priority, deadlineIso) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  // 1) week_label 에서 명시적 날짜 파싱
+  const m = (weekLabel || "").match(/(\d+)\s*월\s*(\d+)\s*일/);
+  if (m) {
+    const year = today.getFullYear();
+    let d = new Date(year, parseInt(m[1],10) - 1, parseInt(m[2],10));
+    // 과거면 내년으로
+    if (d < today) d = new Date(year + 1, parseInt(m[1],10) - 1, parseInt(m[2],10));
+    return _dateToIso(d);
+  }
+  // 2) 마감일 기준 역산 (단일 공고)
+  if (deadlineIso) {
+    const dl = new Date(deadlineIso);
+    if (!isNaN(dl)) {
+      let offsetDays = -14;
+      if (priority === "high") offsetDays = -3;
+      else if (priority === "medium") offsetDays = -7;
+      const target = new Date(dl.getTime() + offsetDays * 86400000);
+      // 오늘보다 과거면 오늘로 보정
+      if (target < today) return _dateToIso(today);
+      return _dateToIso(target);
+    }
+  }
+  // 3) priority 만으로 오프셋
+  const offset = priority === "high" ? 0 : (priority === "medium" ? 7 : 14);
+  return _dateToIso(new Date(today.getTime() + offset * 86400000));
+}
+
+function _dateToIso(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+async function _guideToCalendar(stashId, provider) {
+  const g = _guideStash.get(stashId);
+  const wrap = document.querySelector(`.plan-guide-wrap[data-stash="${stashId}"]`);
+  if (!g || !wrap) {
+    alert("가이드 데이터를 찾을 수 없어요.");
+    return;
+  }
+  const deadlineIso = wrap.dataset.deadline || null;
+  const annTitle = g.recommendation?.title || "";
+  const checked = Array.from(wrap.querySelectorAll(".plan-guide-item-chk:checked"));
+  if (!checked.length) {
+    alert("등록할 항목을 체크해주세요.");
+    return;
+  }
+  const events = checked.map(box => {
+    const sec = g.sections[parseInt(box.dataset.sec, 10)];
+    const text = sec?.items?.[parseInt(box.dataset.it, 10)] || "";
+    const dateIso = _guideEstimateDate(sec?.week_label, sec?.priority, deadlineIso);
+    const summary = annTitle ? `[${annTitle}] ${text}` : text;
+    const descBits = [];
+    if (annTitle) descBits.push(`공고: ${annTitle}`);
+    if (sec?.week_label) descBits.push(`구간: ${sec.week_label}`);
+    descBits.push("(IDEA-RO AI 액션 가이드)");
+    return {
+      summary: summary.slice(0, 200),
+      description: descBits.join("\n"),
+      date_start: dateIso,
+    };
+  });
+  await _pushEventsToProvider(events, provider);
 }
 
 // ─── 통합 타임라인 (Step 3) ─────────────────────────────────────────
