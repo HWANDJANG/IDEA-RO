@@ -653,7 +653,37 @@
     padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px;
     background: var(--bg-subtle);
   }
-  .cal-export { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .cal-legend { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .cal-legend .leg-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; padding: 3px 4px 3px 8px; border-radius: 8px;
+    background: #fff; border: 1px solid var(--border);
+  }
+  .cal-legend .leg-swatch {
+    width: 11px; height: 11px; border-radius: 3px;
+  }
+  .cal-legend .leg-count { color: var(--muted); font-weight: 500; }
+  .cal-legend .leg-action {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 20px;
+    border: 1px solid transparent; border-radius: 5px;
+    cursor: pointer; padding: 0;
+    font-size: 11px; font-weight: 700;
+    transition: background 0.12s, border-color 0.12s;
+    font-family: inherit;
+  }
+  .cal-legend .leg-action.gcal {
+    background: #fef3c7; color: #92400e;
+  }
+  .cal-legend .leg-action.gcal:hover { background: #fde68a; border-color: #f59e0b; }
+  .cal-legend .leg-action.ncal {
+    background: #dcfce7; color: #15803d;
+  }
+  .cal-legend .leg-action.ncal:hover { background: #bbf7d0; border-color: #15803d; }
+  .cal-legend .leg-action:disabled {
+    background: var(--bg-subtle); color: var(--muted); cursor: not-allowed;
+  }
+  .cal-export { display: flex; gap: 6px; align-items: center; }
 
   /* 외부 캘린더 등록 일정 (취소 가능) */
   .ext-cal-section {
@@ -4310,6 +4340,7 @@
       </div>
 
       <div class="cal-toolbar">
+        <div id="cal-legend" class="cal-legend"></div>
         <div class="cal-export">
           <span id="cal-sel-count" class="ac-meta" style="margin-right:8px;">선택 0개</span>
           <button class="add" onclick="selectAllVisible()">월간 전체 선택</button>
@@ -9659,7 +9690,22 @@ function renderCalendar() {
   const label = document.getElementById("cal-month-label");
   label.textContent = `${CAL_VIEW.getFullYear()}년 ${CAL_VIEW.getMonth() + 1}월`;
 
-  // (카테고리 범례 + 일괄 추가 버튼은 제거 — 캘린더 그리드에서 직접 일정 선택해서 추가)
+  // 범례 + 카테고리별 일괄 추가 액션 ([+G] [+N])
+  const legend = document.getElementById("cal-legend");
+  legend.innerHTML = (CAL_DATA.folders || []).map(f => {
+    const idx = CAL_FOLDER_COLOR.get(f.id) || 0;
+    const c = CAL_PALETTE[idx];
+    const cnt = (CAL_DATA.events || []).filter(ev => ev.folder_id === f.id).length;
+    return `<span class="leg-item">
+      <span class="leg-swatch" style="background:${c.swatch}"></span>
+      ${escapeHtml(f.name)}
+      <span class="leg-count">(${cnt})</span>
+      <button class="leg-action gcal" title="이 카테고리 ${cnt}건 전부 Google 캘린더에 추가"
+        onclick="addCategoryToCalendar(${f.id}, 'google')" ${cnt === 0 ? 'disabled' : ''}>G</button>
+      <button class="leg-action ncal" title="이 카테고리 ${cnt}건 전부 네이버 캘린더에 추가"
+        onclick="addCategoryToCalendar(${f.id}, 'naver')" ${cnt === 0 ? 'disabled' : ''}>N</button>
+    </span>`;
+  }).join("") || `<span class="ac-meta">아직 폴더 없음</span>`;
 
   // 그리드 — 일~토 헤더 + 6주(주 단위 행)
   const grid = document.getElementById("cal-grid");
@@ -10855,7 +10901,15 @@ async function _pushEventsToProvider(events, provider) {
   }
 }
 
-// (addCategoryToCalendar 제거 — 카테고리 범례가 사라져 호출처 없음)
+async function addCategoryToCalendar(folderId, provider) {
+  // 카테고리(폴더) 의 모든 이벤트를 한 번에 추가
+  const events = (CAL_DATA.events || [])
+    .filter(ev => ev.folder_id === folderId)
+    .map(_eventToExternalPayload);
+  if (!events.length) return;
+  if (!confirm(`이 카테고리의 ${events.length}건을 ${provider === 'google' ? 'Google' : '네이버'} 캘린더에 모두 추가할까요?`)) return;
+  await _pushEventsToProvider(events, provider);
+}
 
 async function addSelectedToGoogleCalendar() {
   if (!CAL_SELECTED.size) {
