@@ -1008,6 +1008,38 @@
   }
   .ann-panel-close:hover { color: var(--text); background: white; }
 
+  /* L4: 둘러보기/매칭 카드 우상단 ⭐ 담기 토글 */
+  .ann-card-pick {
+    flex-shrink: 0;
+    width: 32px; height: 32px; padding: 0;
+    border-radius: 999px;
+    background: white; border: 1px solid var(--border-strong);
+    cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.12s;
+  }
+  .ann-card-pick:hover { background: var(--accent-soft); border-color: var(--accent); transform: scale(1.08); }
+  .ann-card-pick.picked {
+    background: var(--accent); border-color: var(--accent); color: white;
+  }
+  .ann-card-pick .acp-star { font-size: 15px; line-height: 1; }
+  .ann-card-pick.picked .acp-star { color: white; }
+
+  /* L4: 사이드 패널 헤더 우상단 "담기" 버튼 (× 옆) */
+  .ann-panel-pick {
+    flex-shrink: 0;
+    padding: 5px 11px; border-radius: 999px;
+    background: white; border: 1px solid var(--border-strong);
+    font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+    color: var(--text);
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .ann-panel-pick:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .ann-panel-pick.picked {
+    background: var(--accent); color: white; border-color: var(--accent);
+  }
+  .ann-panel-pick.picked:hover { background: #BF4715; }
+
   /* L3: 첨부 분석 상태 띠 — 헤더 하단 */
   .ann-panel-attach {
     margin-top: 10px;
@@ -3627,7 +3659,7 @@
     color: var(--primary); border-bottom-color: var(--primary);
   }
   .cmp-grid .cmp-cell.col-head .cmp-col-panel-btn {
-    display: inline-block; margin-top: 8px;
+    display: inline-block;
     padding: 4px 9px; border-radius: 999px;
     background: white; border: 1px solid var(--border-strong);
     color: var(--text); font-size: 11px; font-weight: 600;
@@ -3636,6 +3668,12 @@
   }
   .cmp-grid .cmp-cell.col-head .cmp-col-panel-btn:hover {
     background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  }
+  .cmp-grid .cmp-cell.col-head .cmp-col-pick-btn.picked {
+    background: var(--accent); color: white; border-color: var(--accent);
+  }
+  .cmp-grid .cmp-cell.col-head .cmp-col-pick-btn.picked:hover {
+    background: #BF4715; color: white;
   }
   .cmp-dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -4291,6 +4329,7 @@
           <h3 class="ann-panel-title" id="ann-panel-title">공고 제목</h3>
           <div class="ann-panel-source" id="ann-panel-source"></div>
         </div>
+        <button class="ann-panel-pick" id="ann-panel-pick" onclick="_annPanelTogglePick()" title="라이브러리에 담기/제외">☆ 담기</button>
         <button class="ann-panel-close" onclick="closeAnnPanel()" title="닫기">×</button>
       </div>
       <!-- L3: 첨부 분석 상태 띠 — 패널 열림 시 자동 로드 -->
@@ -5152,10 +5191,28 @@ async function togglePlanPick(id, source = "recommendation") {
 }
 
 function _renderPickedUiFor(id) {
+  const picked = _planPicked.has(id);
+  // AI 추천 카드
   const card = document.getElementById(`plan-card-${id}`);
-  if (card) card.classList.toggle("selected", _planPicked.has(id));
+  if (card) card.classList.toggle("selected", picked);
   const btn = document.getElementById(`plan-pick-${id}`);
-  if (btn) btn.innerHTML = _planPicked.has(id) ? "✓ 라이브러리에 담음" : "+ 내 라이브러리에 담기";
+  if (btn) btn.innerHTML = picked ? "✓ 라이브러리에 담음" : "+ 내 라이브러리에 담기";
+  // 둘러보기/매칭 카드의 ⭐
+  document.querySelectorAll(`.announcement-card[data-ann-id="${id}"] .ann-card-pick`).forEach(b => {
+    b.classList.toggle("picked", picked);
+    const star = b.querySelector(".acp-star");
+    if (star) star.textContent = picked ? "★" : "☆";
+  });
+  // 비교 모달 컬럼 헤더 — onclick 에 ann_id 가 인라인이라 모든 .cmp-col-pick-btn 중 매칭 찾기
+  document.querySelectorAll(`.cmp-col-pick-btn`).forEach(b => {
+    const m = (b.getAttribute("onclick") || "").match(/togglePlanPick\((\d+)/);
+    if (m && parseInt(m[1], 10) === id) {
+      b.classList.toggle("picked", picked);
+      b.innerHTML = picked ? "★ 담음" : "☆ 담기";
+    }
+  });
+  // 사이드 패널 헤더 (현재 열린 게 이 id 면)
+  if (_annPanelCurrentId === id) _renderAnnPanelPickBtn(id);
 }
 
 // 페이지 로드 시 라이브러리 DB 에서 picked 복원 (새로고침해도 유지)
@@ -6270,6 +6327,11 @@ async function renderAnnouncements() {
                 </div>` : ""}
             </div>
             <div class="a-actions">
+              <button class="ann-card-pick ${_planPicked.has(a.id) ? 'picked' : ''}"
+                onclick="event.stopPropagation(); togglePlanPick(${a.id}, 'browse')"
+                title="라이브러리에 담기/제외">
+                <span class="acp-star">${_planPicked.has(a.id) ? '★' : '☆'}</span>
+              </button>
               <span class="doc-status-pill ds-${docStatus.key}" title="보유 ${sum.fulfilled} · 임박 ${sum.expiring} · 만료 ${sum.expired} · 미보유 ${sum.missing}">
                 <span class="dsp-icon">${docStatus.icon}</span>${escapeHtml(docStatus.label)}
               </span>
@@ -7310,8 +7372,13 @@ function _buildCompareHtml(picks) {
     return `<div class="cmp-cell col-head">
       <span class="cmp-src">${escapeHtml(a.source_name || a.source_code || "")}</span>
       ${titleH}
-      <button class="cmp-col-panel-btn" onclick="openAnnPanel(${a.id}, 'guide')"
-        title="이 공고만 따로 가이드/질문하기">💬 가이드/질문</button>
+      <div style="display:flex; gap:5px; margin-top:8px; flex-wrap:wrap;">
+        <button class="cmp-col-panel-btn" onclick="openAnnPanel(${a.id}, 'guide')"
+          title="이 공고만 따로 가이드/질문하기">💬 가이드/질문</button>
+        <button class="cmp-col-panel-btn cmp-col-pick-btn ${_planPicked.has(a.id) ? 'picked' : ''}"
+          onclick="togglePlanPick(${a.id}, 'compare')"
+          title="라이브러리에 담기/제외">${_planPicked.has(a.id) ? '★ 담음' : '☆ 담기'}</button>
+      </div>
     </div>`;
   }).join("");
 
@@ -9813,9 +9880,26 @@ async function openAnnPanel(annId, tab) {
   backdrop.classList.add("show");
   panel.classList.add("show");
   panel.setAttribute("aria-hidden", "false");
+  _renderAnnPanelPickBtn(annId);
   switchAnnPanelTab(tab || _annPanelCurrentTab || "guide");
   // L3: 첨부 분석 상태 띠 — 패널 열림 시 항상 로드 (탭 무관, 헤더 영역)
   _loadAnnPanelAttachBar(annId);
+}
+
+function _renderAnnPanelPickBtn(annId) {
+  const btn = document.getElementById("ann-panel-pick");
+  if (!btn) return;
+  const picked = _planPicked.has(annId);
+  btn.classList.toggle("picked", picked);
+  btn.innerHTML = picked ? "★ 담음" : "☆ 담기";
+  btn.title = picked ? "라이브러리에서 제외" : "라이브러리에 담기";
+}
+
+async function _annPanelTogglePick() {
+  const annId = _annPanelCurrentId;
+  if (annId == null) return;
+  await togglePlanPick(annId, "panel");
+  _renderAnnPanelPickBtn(annId);
 }
 
 // L3: 첨부 분석 상태 띠 — 패널 헤더에 표시. fetch 미완료면 자동 trigger.
