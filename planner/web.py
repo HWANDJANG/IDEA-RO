@@ -1930,6 +1930,64 @@ class Handler(BaseHTTPRequestHandler):
                 )]
             else:
                 events = []
+
+            # 4) 라이브러리에 담은 공고 중 attachment_folders 가 아직 없는 것 →
+            #    가상 폴더 + 자동 분석 추출 일정 합치기 (DB 미저장, 응답 시점에 만 합성)
+            from planner.planner import _load_extracted_events_for_announcement
+            ann_to_folder = {f["announcement_id"]: f["id"] for f in all_folders if f.get("announcement_id")}
+            virtual_added = 0
+            for pann_id in picked_ids:
+                if pann_id in ann_to_folder:
+                    continue   # 실 폴더 이미 있음, 중복 합치지 않음
+                # 공고 메타
+                ann_row = conn.execute(
+                    "SELECT id, title, end_date FROM announcements WHERE id=?", (pann_id,)
+                ).fetchone()
+                if not ann_row:
+                    continue
+                # 가상 folder_id — 음수 (실 폴더와 충돌 방지)
+                virtual_fid = -int(pann_id)
+                # 추출 일정 (PDF 분석 결과) 가 있으면 합치고, 없으면 신청 마감일이라도 1건
+                extracted = _load_extracted_events_for_announcement(conn, pann_id, user_id)
+                folders.append({
+                    "id":              virtual_fid,
+                    "name":            ann_row["title"] or f"공고 #{pann_id}",
+                    "announcement_id": pann_id,
+                })
+                if extracted:
+                    for i, ev in enumerate(extracted):
+                        events.append({
+                            "id":            -(int(pann_id) * 1000 + i + 1),  # 음수 ID = 가상
+                            "folder_id":     virtual_fid,
+                            "file_hash":     None,
+                            "title":         ev["title"],
+                            "type":          ev["type"],
+                            "date_start":    ev["date_start"],
+                            "date_end":      ev.get("date_end"),
+                            "time":          ev.get("time"),
+                            "note":          None,
+                            "source_page":   None,
+                            "folder_name":   ann_row["title"] or "",
+                        })
+                        virtual_added += 1
+                elif ann_row["end_date"]:
+                    # 추출 분석 없으면 적어도 신청 마감일 1건
+                    events.append({
+                        "id":            -(int(pann_id) * 1000),
+                        "folder_id":     virtual_fid,
+                        "file_hash":     None,
+                        "title":         f"{ann_row['title']} 신청 마감",
+                        "type":          "recruitment_period",
+                        "date_start":    str(ann_row["end_date"])[:10],
+                        "date_end":      None,
+                        "time":          None,
+                        "note":          None,
+                        "source_page":   None,
+                        "folder_name":   ann_row["title"] or "",
+                    })
+                    virtual_added += 1
+            # 이벤트 정렬 재정렬 (가상 + 실제 섞임)
+            events.sort(key=lambda e: (e.get("date_start") or "", e.get("time") or "", e.get("id") or 0))
         finally:
             conn.close()
         self._send_json({"events": events, "folders": folders})
