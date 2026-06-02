@@ -433,7 +433,8 @@ announcement_id → attachment_folders.announcement_id == ann_id AND user_id == 
 | 카카오/Google/Naver 캘린더 호출 | [web.py](planner/web.py) `_handle_{provider}_calendar_insert` |
 | 사용자별 보유 서류 | [web.py](planner/web.py) `_handle_my_docs_list`/`_save` |
 | 매칭 로직 | [matcher.py](planner/matcher.py) `compute_profile_fit`, `match_announcement` |
-| **공고 유형 분류 (6묶음)** | [matcher.py](planner/matcher.py) `classify_announcement_type` + `ANNOUNCEMENT_TYPE_INFO` |
+| **공고 유형 분류 (6묶음)** | [matcher.py](planner/matcher.py) `classify_announcement_type` + `ANNOUNCEMENT_TYPE_INFO` — `auto_type` (LLM 결과) 우선, 없으면 키워드 fallback |
+| **공고 유형 LLM 재분류 (Phase 9)** | [type_classifier.py](planner/analyzer/type_classifier.py) `classify_type_via_llm` + [bulk_classify_types.py](bulk_classify_types.py) — K-Startup '사업화' 카테고리 광범위 문제 해결, 결과는 `announcements.auto_type` 캐시 |
 | **🎯 내 액션 플랜 (엔드 투 엔드)** | [planner.py](planner/planner.py) `compose_action_plan`, `generate_recommendation_narratives`, `generate_action_guide` |
 | **맞춤 플랜 — 지원금 추출 / 노력 추정** | [planner.py](planner/planner.py) `_extract_amount_won` (regex 4단계), `_estimate_effort` (유형 base + 서류 수) |
 | **맞춤 플랜 — 분석 자료 결합 (Step C, 사용자+자동 합본)** | [planner.py](planner/planner.py) `_load_analyses_for_announcement` (uploaded_attachments + announcement_auto_attachments dedup) + `_summarize_analyses` + `_load_extracted_events_for_announcement` (Step 6 일정 추출) |

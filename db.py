@@ -339,6 +339,10 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
     # Phase 8 (Step A 분야 매칭): 사용자가 자기 분야를 멀티 선택. JSON 배열 (예: '["it_ai","fintech"]').
     # NULL/빈 배열이면 분야 점수 = 중립 (15점), 적용 안 한 사용자도 기존처럼 동작.
     ("user_profiles", "interest_tags",       "TEXT"),
+    # Phase 9: LLM 으로 공고 유형 재분류한 결과. matcher.classify_announcement_type 가 우선 사용.
+    # NULL 이면 기존 키워드 fallback. 코드 (funding/space/edu/rnd/global/event/other) 만 저장.
+    ("announcements", "auto_type",            "TEXT"),
+    ("announcements", "auto_type_at",         "TEXT"),  # ISO timestamp, 재분류 시 갱신
 ]
 
 

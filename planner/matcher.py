@@ -48,12 +48,21 @@ def classify_announcement_type(
     raw_meta: dict | None,
     source_code: str | None,
     title: str | None = None,
+    auto_type: str | None = None,
 ) -> dict:
     """공고 유형을 6개 큰 묶음으로 분류한다.
 
-    K-Startup 의 supt_biz_clsfc 메타가 있으면 그것 기준.
-    없으면 출처(NRF/IRIS/NTIS=R&D) 또는 제목 키워드로 추정. 끝까지 모르면 '기타'.
+    우선순위:
+      1. auto_type (LLM 재분류 결과, announcements.auto_type 컬럼) — 가장 정확
+      2. K-Startup 의 supt_biz_clsfc 메타 기준 키워드 매칭
+      3. 출처(NRF/IRIS/NTIS=R&D) 또는 제목 키워드로 추정
+      4. 끝까지 모르면 '기타'
     """
+    # 1) LLM 분류 결과 우선 (Phase 9)
+    if auto_type and auto_type in ANNOUNCEMENT_TYPE_INFO:
+        info = ANNOUNCEMENT_TYPE_INFO[auto_type]
+        return {"code": auto_type, "emoji": info["emoji"], "label": info["label"]}
+
     code = "other"
     clsfc = ""
     if raw_meta:

@@ -292,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
             q = (
                 "SELECT a.id, a.external_id, a.title, a.status, a.d_day, "
                 "       a.start_date, a.end_date, a.department, a.contact, "
-                "       a.detail_url, a.content_text, a.raw_meta, "
+                "       a.detail_url, a.content_text, a.raw_meta, a.auto_type, "
                 "       s.code AS source_code, s.name AS source_name, "
                 "       c.name AS category_name "
                 "FROM announcements a "
@@ -322,7 +322,8 @@ class Handler(BaseHTTPRequestHandler):
                 except (json.JSONDecodeError, TypeError):
                     raw_meta_obj = None
             type_info = classify_announcement_type(
-                raw_meta_obj, r.get("source_code"), r.get("title")
+                raw_meta_obj, r.get("source_code"), r.get("title"),
+                auto_type=r.get("auto_type"),
             )
             compact.append({
                 **{k: v for k, v in r.items() if k not in ("content_text", "raw_meta")},

@@ -169,6 +169,65 @@ def run_one(crawler: BaseCrawler) -> None:
             )
 
 
+def _classify_new_announcements_via_llm() -> None:
+    """크롤링 후 auto_type IS NULL 인 신규 진행중 공고만 LLM 분류 (Phase 9).
+
+    이미 분류된 공고는 캐시 hit 으로 skip → 사실상 신규 공고만 비용 발생.
+    LLM 호출 실패해도 크롤링 결과는 영향 없음 (best-effort).
+    """
+    print("\n=== 신규 공고 자동 분류 (LLM) ===")
+    try:
+        from planner.analyzer.dotenv import load_dotenv
+        load_dotenv()
+        from planner.analyzer.type_classifier import classify_type_via_llm
+        from planner.analyzer.llm.base import LLMError
+        import json
+        import sqlite3
+        from datetime import datetime
+        from planner.paths import DB_PATH
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        rows = list(conn.execute(
+            "SELECT id, title, content_text, raw_meta FROM announcements "
+            "WHERE end_date IS NOT NULL AND substr(end_date,1,10) >= date('now') "
+            "  AND (auto_type IS NULL OR auto_type = '') "
+            "ORDER BY id"
+        ))
+        if not rows:
+            print("  신규 분류 대상 없음 (모두 캐시 hit)")
+            conn.close()
+            return
+
+        print(f"  대상 {len(rows)}건 처리 시작...")
+        ok, fail = 0, 0
+        for i, row in enumerate(rows, 1):
+            clsfc = ""
+            if row["raw_meta"]:
+                try:
+                    clsfc = (json.loads(row["raw_meta"]) or {}).get("supt_biz_clsfc") or ""
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            try:
+                r = classify_type_via_llm(row["title"] or "", row["content_text"] or "", clsfc)
+                now_iso = datetime.now().isoformat(timespec="seconds")
+                conn.execute(
+                    "UPDATE announcements SET auto_type=?, auto_type_at=? WHERE id=?",
+                    (r["code"], now_iso, row["id"]),
+                )
+                conn.commit()
+                ok += 1
+            except (LLMError, Exception) as e:  # noqa: BLE001
+                fail += 1
+                if fail <= 3:
+                    print(f"  FAIL ann={row['id']}: {str(e)[:80]}")
+        conn.close()
+        print(f"  완료: 성공 {ok}, 실패 {fail}")
+    except Exception as e:  # noqa: BLE001
+        # LLM 환경 (API key 등) 미설정 시에도 크롤링은 성공 처리
+        print(f"  자동 분류 SKIP: {e}")
+
+
 def main() -> int:
     db.init_db()
     requested = sys.argv[1:] or list(CRAWLERS.keys())
@@ -179,6 +238,8 @@ def main() -> int:
 
     for code in requested:
         run_one(CRAWLERS[code]())
+
+    _classify_new_announcements_via_llm()
     return 0
 
 

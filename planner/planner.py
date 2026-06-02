@@ -702,7 +702,7 @@ def _build_single_recommendation(conn: sqlite3.Connection, ann_id: int, user_id:
     """공고 1건 → recommendation dict (compose_action_plan 의 Top N detail 형태와 동일)."""
     row = conn.execute(
         "SELECT a.id, a.title, a.start_date, a.end_date, a.d_day, "
-        "       a.department, a.contact, a.detail_url, a.content_text, a.raw_meta, "
+        "       a.department, a.contact, a.detail_url, a.content_text, a.raw_meta, a.auto_type, "
         "       s.code AS source_code, s.name AS source_name "
         "FROM announcements a JOIN sources s ON s.id = a.source_id "
         "WHERE a.id=?",
@@ -721,7 +721,10 @@ def _build_single_recommendation(conn: sqlite3.Connection, ann_id: int, user_id:
     # 자격 점수 계산 (정보용 — 통과 여부 체크 안 함)
     fit = compute_profile_fit(profile, raw_meta, today)
     days_left = _days_until(a.get("end_date"), today) or 0
-    type_info = classify_announcement_type(raw_meta, a.get("source_code"), a.get("title"))
+    type_info = classify_announcement_type(
+        raw_meta, a.get("source_code"), a.get("title"),
+        auto_type=a.get("auto_type"),
+    )
     won, amt_display = _extract_amount_won(a.get("content_text"), raw_meta)
     amount_score = _amount_to_score(won)
 
@@ -917,7 +920,7 @@ def _load_my_docs(conn: sqlite3.Connection, user_id: int) -> list[dict]:
 def _load_active_announcements(conn: sqlite3.Connection, limit: int = 500) -> list[dict]:
     q = (
         "SELECT a.id, a.title, a.start_date, a.end_date, a.d_day, "
-        "       a.department, a.contact, a.detail_url, a.content_text, a.raw_meta, "
+        "       a.department, a.contact, a.detail_url, a.content_text, a.raw_meta, a.auto_type, "
         "       s.code AS source_code, s.name AS source_name "
         "FROM announcements a JOIN sources s ON s.id = a.source_id "
         "WHERE a.end_date IS NOT NULL AND a.end_date != '' "
@@ -1021,7 +1024,10 @@ def compose_action_plan(
         elif days_left <= 30: urgency_score = 10
         else:                 urgency_score = 0
 
-        type_info = classify_announcement_type(raw_meta, a.get("source_code"), a.get("title"))
+        type_info = classify_announcement_type(
+            raw_meta, a.get("source_code"), a.get("title"),
+            auto_type=a.get("auto_type"),
+        )
 
         won, amt_display = _extract_amount_won(a.get("content_text"), raw_meta)
         amount_score = _amount_to_score(won)
