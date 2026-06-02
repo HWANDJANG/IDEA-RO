@@ -309,10 +309,6 @@ class Handler(BaseHTTPRequestHandler):
             q += " ORDER BY a.end_date ASC LIMIT ?"
             params.append(limit)
             rows = [dict(r) for r in conn.execute(q, params)]
-            # 첨부 분석 완료된 ann_id 집합 — 정렬 우선순위 표시용
-            analyzed_set = {r[0] for r in conn.execute(
-                "SELECT DISTINCT announcement_id FROM announcement_auto_attachments WHERE status='done'"
-            )}
         finally:
             conn.close()
         compact = []
@@ -333,10 +329,7 @@ class Handler(BaseHTTPRequestHandler):
                 "content_preview": content[:300],
                 "content_length": len(content),
                 "type": type_info,
-                "has_analyzed": r["id"] in analyzed_set,
             })
-        # 분석된 공고를 위로 정렬 (마감일 순 유지하면서)
-        compact.sort(key=lambda x: (0 if x.get("has_analyzed") else 1, x.get("end_date") or ""))
         self._send_json({"announcements": compact, "total": len(compact)})
 
     def _handle_ics_announcements(self, query: str) -> None:
