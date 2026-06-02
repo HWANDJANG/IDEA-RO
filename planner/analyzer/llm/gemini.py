@@ -168,7 +168,10 @@ class GeminiProvider(LLMProvider):
             config_kwargs["response_mime_type"] = "application/json"
             config_kwargs["response_schema"] = _sanitize_schema(response_schema)
 
-        image_part = genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+        # 정부 사이트가 'image/jpeg;charset=utf-8' 처럼 charset 을 붙여 응답하는 경우가 잦은데
+        # Gemini Vision 은 순수 'image/jpeg' / 'image/png' / 'image/webp' 만 받음 (400 INVALID_ARGUMENT).
+        clean_mime = (mime_type or "image/jpeg").split(";", 1)[0].strip().lower()
+        image_part = genai_types.Part.from_bytes(data=image_bytes, mime_type=clean_mime)
 
         try:
             response = self.client.models.generate_content(

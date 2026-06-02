@@ -33,8 +33,8 @@ from planner.attach_fetcher import (
 )
 
 
-# 자동 분석을 시도할 확장자 (Step 1+2 의 분석 커버리지 + HWP 추가)
-_AUTO_ANALYZE_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".hwpx", ".hwp")
+# 자동 분석을 시도할 확장자 (Step 1+2 의 분석 커버리지 + HWP + TXT 추가)
+_AUTO_ANALYZE_EXTS = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".hwpx", ".hwp", ".txt")
 # 명시적으로 unsupported 로 기록할 확장자 (사용자에게 "지원 안 됨" 표시)
 _KNOWN_UNSUPPORTED_EXTS = (".doc", ".docx", ".xls", ".xlsx", ".zip", ".alz")
 
@@ -52,6 +52,8 @@ def _detect_format(filename: str) -> Optional[str]:
         return "hwpx"
     if n.endswith(".hwp"):
         return "hwp"
+    if n.endswith(".txt"):
+        return "txt"
     return None
 
 
@@ -91,6 +93,17 @@ def _check_format_magic(fmt: str, data: bytes, content_type: Optional[str]) -> O
         if data.startswith(b"RIFF") and b"WEBP" in data[:16]: return None
         if data.startswith(b"GIF8"):                   return None
         return f"not a valid image (magic={data[:8]!r}, content-type={content_type})"
+
+    if fmt == "txt":
+        # TXT 는 별도 magic 없음 — bynary blob 인지만 가볍게 검사.
+        # 처음 1KB 에서 NUL 바이트가 많으면 텍스트 아닐 가능성.
+        sample = data[:1024]
+        if not sample:
+            return "empty file"
+        nul_ratio = sample.count(b"\x00") / max(1, len(sample))
+        if nul_ratio > 0.05:
+            return f"not a valid text (binary content, content-type={content_type})"
+        return None
 
     return None
 
@@ -276,9 +289,11 @@ def fetch_and_analyze_announcement(
 
         counters["attempted"] += 1
 
-        # 다운로드
+        # 다운로드 — detail_url 을 Referer 로 (NTIS 등 정부 사이트가 요구)
         try:
-            file_bytes, content_type = download_to_bytes(url, max_bytes=_MAX_FILE_BYTES)
+            file_bytes, content_type = download_to_bytes(
+                url, max_bytes=_MAX_FILE_BYTES, referer=detail_url,
+            )
         except ValueError as e:
             # 크기 초과
             _mark_skipped(conn, row_id, f"too_large: {e}")

@@ -83,9 +83,21 @@ def scan_attachments_from_url(url: str) -> dict:
     return {"source": src, "files": files, "warning": None}
 
 
-def download_to_bytes(url: str, *, max_bytes: int = 50 * 1024 * 1024) -> tuple[bytes, str | None]:
-    """첨부 URL → (bytes, content_type). max_bytes 초과 시 HTTPError."""
-    r = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=DEFAULT_TIMEOUT, stream=True)
+def download_to_bytes(
+    url: str,
+    *,
+    max_bytes: int = 50 * 1024 * 1024,
+    referer: str | None = None,
+) -> tuple[bytes, str | None]:
+    """첨부 URL → (bytes, content_type). max_bytes 초과 시 HTTPError.
+
+    referer 를 지정하면 Referer 헤더 추가 — NTIS 같은 사이트는 Referer 없으면
+    HTML 에러 페이지를 첨부 대신 응답한다.
+    """
+    headers = {"User-Agent": USER_AGENT}
+    if referer:
+        headers["Referer"] = referer
+    r = requests.get(url, headers=headers, timeout=DEFAULT_TIMEOUT, stream=True)
     r.raise_for_status()
     content_length = int(r.headers.get("Content-Length") or 0)
     if content_length and content_length > max_bytes:

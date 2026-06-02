@@ -439,6 +439,8 @@ def analyze_attachment(
     # HWP (구형) — pyhwp 의 hwp5txt 로 텍스트 추출 후 텍스트 분석. HWPX 보다 후순위 매칭.
     is_hwp = (name.endswith(".hwp") and not name.endswith(".hwpx")) or \
              ("hwp" in mt and "hwp+xml" not in mt and "hwpx" not in mt)
+    # TXT — 직접 분석 (HWPX/HWP 처럼 analyze_text 재사용)
+    is_txt = name.endswith(".txt") or mt.startswith("text/plain")
 
     if is_pdf:
         return analyze_pdf(
@@ -485,6 +487,27 @@ def analyze_attachment(
             original_filename=original_filename,
             source_type="hwp",
             source_ext=".hwp",
+            provider=provider,
+            use_cache=use_cache,
+        )
+    if is_txt:
+        # 인코딩 자동 감지 — UTF-8 우선, 깨지면 CP949 (한국 정부 사이트가 많이 씀)
+        text = None
+        for enc in ("utf-8", "utf-8-sig", "cp949", "euc-kr"):
+            try:
+                text = file_bytes.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        if text is None:
+            # 마지막 안전망 — 에러 무시
+            text = file_bytes.decode("utf-8", errors="replace")
+        return analyze_text(
+            file_bytes,
+            text,
+            original_filename=original_filename,
+            source_type="text",
+            source_ext=".txt",
             provider=provider,
             use_cache=use_cache,
         )
