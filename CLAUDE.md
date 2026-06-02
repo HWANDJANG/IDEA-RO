@@ -127,6 +127,18 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 
 캘린더 이벤트에서 DB 일정은 양수 ID, 보유 서류 만료 (localStorage 계산) 는 음수 synthetic ID. 외부 캘린더 등록 시 `event_ids` 로 보내지 말고 `events: [{...}]` 전체 데이터 배열로 보낼 것 — 백엔드가 음수 ID 는 DB 조회 못 함.
 
+### Gemini Vision 의 MIME 타입 — charset 붙으면 거부
+
+정부 사이트가 이미지 첨부에 대해 `Content-Type: image/jpeg;charset=utf-8` 처럼 응답하는 경우가 많은데, 이 헤더를 그대로 Gemini Vision 의 `Part.from_bytes(mime_type=...)` 에 넘기면 `400 INVALID_ARGUMENT: Unsupported MIME type` 발생 (포스터 이미지 111건 일괄 실패 사례).
+
+[gemini.py:complete_vision](planner/analyzer/llm/gemini.py) 에서 `mime_type.split(";", 1)[0].strip().lower()` 로 정규화 후 호출. 새 vision 호출 추가 시 동일 패턴 유지.
+
+### NTIS 첨부 다운로드 — Referer 헤더 필수
+
+NTIS 의 `/rndgate/eg/cmm/file/download.do` 는 Referer 없으면 HTML 에러 페이지로 응답 (NTIS 45건 일괄 실패 사례). [attach_fetcher.download_to_bytes](planner/attach_fetcher.py) 에 `referer` 인자 추가 후, [auto_fetcher.py](planner/auto_fetcher.py) 가 공고의 `detail_url` 을 Referer 로 자동 전달.
+
+새 정부 사이트 스크래퍼 추가 시 다운로드 401/HTML 응답 만나면 Referer 부터 의심.
+
 ---
 
 ## 컨벤션
@@ -203,9 +215,10 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 | 포맷 | 분기 우선순위 | 분석 함수 | 추출 함수 |
 |---|---|---|---|
 | PDF | is_pdf (mt=application/pdf 또는 .pdf) | `analyze_pdf` | `extract_pdf_text` (PyMuPDF) |
-| JPG/PNG/WEBP | is_image (mt=image/* 또는 확장자) | `analyze_image` | Gemini Vision 직접 |
+| JPG/PNG/WEBP | is_image (mt=image/* 또는 확장자) | `analyze_image` | Gemini Vision 직접 (MIME 정규화 후) |
 | HWPX | is_hwpx (.hwpx 또는 hwp+xml MIME) | `analyze_text` | `extract_hwpx_text` (stdlib ZIP+XML) |
 | HWP | is_hwp (.hwp, HWPX 보다 후순위) | `analyze_text` | `extract_hwp_text` (pyhwp hwp5txt subprocess) |
+| TXT | is_txt (.txt 또는 text/plain) | `analyze_text` | UTF-8 → CP949 → EUC-KR 순 자동 디코드 |
 | 그 외 | LLMError | — | — |
 
 **새 포맷 추가 시**:
@@ -229,7 +242,9 @@ netstat -ano | Select-String ":8765\s+0.0.0.0:0\s+LISTENING"
 
 **Race safety**: `_upsert_auto_attachment` 가 `INSERT OR IGNORE` 후 SELECT — 동시 호출 시 UNIQUE 충돌 흡수.
 
-**Magic 사전 검증** (`_check_format_magic`): PDF (`%PDF`) / HWPX (`PK ZIP`) / HWP (`OLE2`) / 이미지 (JPEG/PNG/RIFF) 별로 다운로드 바이트가 실제 포맷과 일치하는지 LLM 호출 전 차단. NTIS 처럼 form-POST 필요한 사이트가 HTML 에러 페이지 반환 시 명확한 에러 메시지.
+**Magic 사전 검증** (`_check_format_magic`): PDF (`%PDF`) / HWPX (`PK ZIP`) / HWP (`OLE2`) / 이미지 (JPEG/PNG/RIFF) 별로 다운로드 바이트가 실제 포맷과 일치하는지 LLM 호출 전 차단. TXT 는 NUL 바이트 비율(>5%면 바이너리로 판단)로 가볍게 검사. NTIS 처럼 form-POST 필요한 사이트가 HTML 에러 페이지 반환 시 명확한 에러 메시지.
+
+**다운로드 Referer 자동 전달**: `download_to_bytes(url, referer=detail_url)` 로 공고 페이지를 Referer 헤더에 자동 첨부. NTIS 등 referer 검증 사이트의 첨부도 정상 수신 가능 (위 "흔한 함정" 참조).
 
 **Idempotent 정책**: status='done' 인 첨부는 skip. force=true 만 재시도. 옛 'failed' 행 정리는 SQL `DELETE WHERE status='failed' AND file_format IS NULL` (옛 코드 시도분만 정리).
 
@@ -377,6 +392,8 @@ announcement_id → attachment_folders.announcement_id == ann_id AND user_id == 
 | **HWP 분석을 직접 변환 (LibreOffice/한컴 자동화) 으로** | pyhwp `hwp5txt` CLI 로 텍스트만 추출 → `analyze_text`. 표/그림 손실 있지만 정부 공고 본문 95% 는 텍스트로 충분. 변환 방식은 운영 부담 큼 |
 | **HWPX 와 HWP 분기 순서 뒤바꾸기** | dispatcher 에서 `is_hwpx` 가 `is_hwp` 보다 **먼저** (`.hwpx` 도 `.hwp` 로 endswith 매칭되므로). `is_hwp` 정의에 `not endswith(".hwpx")` 가드 |
 | **자동 fetch 의 LLM 호출 전 magic 검증 생략** | `auto_fetcher._check_format_magic` 으로 다운로드 바이트가 PDF (`%PDF`) / HWPX (`PK ZIP`) / HWP (`OLE2`) / 이미지 매직과 일치하는지 사전 검증. NTIS 같은 form-POST 사이트가 HTML 에러 페이지 반환 시 LLM 호출 전 차단 |
+| **Gemini Vision 호출에 raw Content-Type 그대로 전달** | `image/jpeg;charset=utf-8` 같은 응답이 흔함 → `mime_type.split(';',1)[0].strip().lower()` 로 정규화. 미정규화 시 400 INVALID_ARGUMENT 로 모든 포스터 이미지 일괄 실패 |
+| **NTIS 첨부를 Referer 없이 다운로드** | NTIS `/rndgate/eg/cmm/file/download.do` 는 Referer 검증 → 없으면 HTML 에러 페이지. `download_to_bytes(url, referer=detail_url)` 로 공고 URL 자동 전달. 새 정부 사이트도 401/HTML 응답 만나면 Referer 부터 의심 |
 | **카드 인덱스로 _matchResults 직접 접근** | `visible` 인덱스와 `results` 인덱스 다를 수 있음. 카드 DOM 의 `data-ann-id` 어트리뷰트로 매핑하거나 `_matchResults.find(r => r.announcement.id === annId)` |
 | **공고 분석을 별도 탭으로 유지** | (옵션 B 통합) 카드 펼침의 자동 분석 블록에 흡수. 사이드바 2탭만 (둘러보기 + 내 액션 플랜). 옛 `pane-match` `pane-analyze` 는 DOM 호환용 placeholder 로 hollow out |
 | **비교 모달이 사용자 직접 첨부만 카운트** | `_collect_compare_items` 가 사용자 첨부 + `announcement_auto_attachments` (status=done) 합본. 프론트 `_refreshAttachCounts` 가 `_folderByAnnouncement` + `_autoCountByAnn` 합산 표시 ("분석 자료 N건 (자동 X · 직접 Y)") |
