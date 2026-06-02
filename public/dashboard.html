@@ -4257,10 +4257,6 @@
     </div>
   </section>
 
-  <!-- (Phase 2 통합) pane-match 는 비워두고 JS 호환 유지용으로만 남김.
-       원본 내용은 위 pane-browse 의 browse-mode-match 안으로 이동했음. -->
-  <section class="pane" id="pane-match" hidden></section>
-
   <!-- 탭 3: 공고 분석 (PDF 업로드 + LLM 추출) -->
   <section class="pane" id="pane-analyze">
     <div class="panel">
@@ -7338,12 +7334,10 @@ function updateCompareBar() {
   bar.classList.toggle("show", _isMatchViewActive() && compareSelection.size >= 2);
 }
 
-// Phase 2: 매칭 카드 화면이 보이는지 = 둘러보기 탭 활성 AND 자격 맞춤 모드 (또는 legacy pane-match.active)
+// 매칭 카드 화면이 보이는지 = 둘러보기 탭 활성 AND 자격 맞춤 모드
 function _isMatchViewActive() {
   const browseActive = document.getElementById("pane-browse")?.classList.contains("active");
-  if (browseActive && window._browseMode === "match") return true;
-  // legacy fallback (Phase 2 이전 코드가 pane-match 를 직접 활성화하는 케이스)
-  return document.getElementById("pane-match")?.classList.contains("active") || false;
+  return !!(browseActive && window._browseMode === "match");
 }
 
 function _parseFitDetail(detail) {
@@ -11330,11 +11324,6 @@ const FOUNDING_TO_BTYPE = {
   "개인 사업자": "individual",
   "법인 사업자": "corporate",
 };
-const BTYPE_TO_FOUNDING = {
-  "prelaunch":  "예비 창업자",
-  "individual": "개인 사업자",
-  "corporate":  "법인 사업자",
-};
 
 async function renderProfilePanel() {
   const body = document.getElementById("profile-form-body");
@@ -11418,7 +11407,7 @@ async function renderProfilePanel() {
           <select id="pf-founding-type">
             <option value="">선택</option>
             ${FOUNDING_TYPES.map(ft => {
-              const isSelected = (p.founding_type === ft) || (BTYPE_TO_FOUNDING[p.business_type] === ft);
+              const isSelected = (p.founding_type === ft);
               return `<option value="${escapeHtml(ft)}" ${isSelected ? "selected" : ""}>${escapeHtml(ft)}</option>`;
             }).join("")}
           </select>

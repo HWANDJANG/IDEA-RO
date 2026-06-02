@@ -9,7 +9,6 @@ K-Startup / NRF / NTIS 의 detail 페이지 URL 을 받아 첨부 파일 목록�
 
 from __future__ import annotations
 
-import re
 from typing import Literal
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -249,7 +248,3 @@ def _scrape_generic(url: str) -> list[dict]:
             "is_pdf": lower.endswith(PDF_EXTS),
         })
     return files
-
-
-def _strip_html(s: str) -> str:
-    return re.sub(r"<[^>]+>", "", s).strip()
