@@ -32,3 +32,8 @@ planner/storage/pdfs/
 planner/storage/extracts/
 planner/storage/analyses/
 planner/storage/derived/
+planner/storage/images/
+planner/storage/sources/
+
+# Claude Code 로컬 설정 (사용자별)
+.claude/
