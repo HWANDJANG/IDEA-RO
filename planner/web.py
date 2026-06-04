@@ -630,13 +630,17 @@ class Handler(BaseHTTPRequestHandler):
         narrative = ((qs.get("narrative") or [""])[0] or "").strip()
         if not narrative:
             try:
-                with db.connect() as conn:
+                conn = sqlite3.connect(DB_PATH)
+                conn.row_factory = sqlite3.Row
+                try:
                     row = conn.execute(
                         "SELECT narrative_context FROM user_profiles WHERE user_id=?",
                         (user_id,),
                     ).fetchone()
                     if row and row["narrative_context"]:
                         narrative = row["narrative_context"].strip()
+                finally:
+                    conn.close()
             except Exception:  # noqa: BLE001
                 pass
         try:
@@ -3550,7 +3554,8 @@ class Handler(BaseHTTPRequestHandler):
             narrative = narrative[:2000]
         value = narrative or None
 
-        with db.connect() as conn:
+        conn = sqlite3.connect(DB_PATH)
+        try:
             # user_profiles row 가 없으면 INSERT, 있으면 UPDATE
             existing = conn.execute(
                 "SELECT user_id FROM user_profiles WHERE user_id=?", (user_id,)
@@ -3565,6 +3570,9 @@ class Handler(BaseHTTPRequestHandler):
                     "INSERT INTO user_profiles (user_id, narrative_context) VALUES (?, ?)",
                     (user_id, value),
                 )
+            conn.commit()
+        finally:
+            conn.close()
         self._send_json({"ok": True, "narrative": narrative, "length": len(narrative)})
 
     # ─── 보유 서류 (Phase 6: localStorage → DB) ────────────────────────────
