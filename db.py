@@ -343,6 +343,9 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
     # NULL 이면 기존 키워드 fallback. 코드 (funding/space/edu/rnd/global/event/other) 만 저장.
     ("announcements", "auto_type",            "TEXT"),
     ("announcements", "auto_type_at",         "TEXT"),  # ISO timestamp, 재분류 시 갱신
+    # Phase 10: 사용자 자연어 컨텍스트 (AI 추천 시 LLM rerank 입력). 사용자별 1줄글 저장.
+    # 비우면 기존 light score Top 5 (LLM rerank skip).
+    ("user_profiles", "narrative_context",    "TEXT"),
 ]
 
 

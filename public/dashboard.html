@@ -2772,6 +2772,48 @@
   .plan-meta { color: var(--muted); font-size: 12px; }
   .plan-meta b { color: var(--text); font-weight: 600; }
 
+  /* Phase 10: narrative 입력 박스 */
+  .plan-narrative-box {
+    background: var(--bg-subtle); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin: 0 0 22px;
+  }
+  .plan-nb-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .plan-nb-title {
+    font-size: 13px; font-weight: 700; color: var(--text);
+  }
+  .plan-nb-opt { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .plan-nb-status {
+    font-size: 11px; color: var(--muted); transition: opacity 0.3s;
+  }
+  .plan-nb-status.saving { color: var(--accent); }
+  .plan-nb-status.saved  { color: #4caf50; }
+  .plan-nb-input {
+    width: 100%; box-sizing: border-box;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 13px; line-height: 1.55;
+    background: var(--bg); color: var(--text);
+    resize: vertical; min-height: 60px; max-height: 200px;
+    font-family: inherit;
+  }
+  .plan-nb-input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .plan-nb-hint {
+    margin-top: 6px; font-size: 11px; color: var(--muted); line-height: 1.5;
+  }
+
+  /* narrative reason 배지 (카드 상단) */
+  .plan-narrative-reason {
+    display: flex; align-items: flex-start; gap: 8px;
+    background: linear-gradient(135deg, #fff8eb 0%, #fef3d1 100%);
+    border-left: 3px solid var(--accent);
+    padding: 10px 12px; margin: 8px 0 12px; border-radius: 8px;
+    font-size: 13px; color: var(--text); line-height: 1.5;
+  }
+  .plan-narrative-reason .pnr-icon { flex-shrink: 0; font-size: 14px; }
+  .plan-narrative-reason .pnr-text { flex: 1; }
+
   /* 카드 안 amount/effort 메타 */
   .plan-amount-badge {
     display: inline-flex; align-items: center; gap: 4px;
@@ -4308,6 +4350,25 @@
         </div>
         <button class="plan-refresh-mini" onclick="loadPlan()" title="다시 계산">🔄</button>
       </div>
+
+      <!-- Phase 10: 자유 형식 상황 컨텍스트 (선택) -->
+      <div class="plan-narrative-box">
+        <div class="plan-nb-head">
+          <span class="plan-nb-title">✏️ 내 상황 자유롭게 알려주기 <span class="plan-nb-opt">(선택)</span></span>
+          <span class="plan-nb-status" id="plan-nb-status"></span>
+        </div>
+        <textarea
+          id="plan-narrative"
+          class="plan-nb-input"
+          placeholder="예: 작년 시드 5억 받고 시리즈A 준비 중. 매출 인증 가능한 공고 위주, 액셀러레이팅보다는 직접 자금 선호. 글로벌 진출 계획 있음."
+          maxlength="2000"
+          rows="3"
+        ></textarea>
+        <div class="plan-nb-hint">
+          입력하면 AI 가 자격 통과 공고 중에서 당신의 상황에 가장 맞는 5건을 골라드려요. 자동 저장됩니다.
+        </div>
+      </div>
+
       <div id="plan-body"><div class="empty">불러오는 중...</div></div>
     </div>
   </section>
@@ -5064,6 +5125,52 @@ const _planPicked = new Set();
 // 현재 표시 중인 plan 응답 캐시 (담기 토글 시 타임라인 재렌더용)
 let _planLast = null;
 
+// Phase 10: narrative 입력 — debounce 후 자동 저장 + plan 재호출
+let _narrativeSaveTimer = null;
+let _narrativeLastSaved = "";  // 마지막 저장된 값 (변경 감지)
+
+function _setNarrativeStatus(text, cls) {
+  const el = document.getElementById("plan-nb-status");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "plan-nb-status" + (cls ? " " + cls : "");
+}
+
+async function _saveNarrativeAndReloadPlan() {
+  const ta = document.getElementById("plan-narrative");
+  if (!ta) return;
+  const val = (ta.value || "").trim();
+  if (val === _narrativeLastSaved) return;  // 변경 없음
+  _setNarrativeStatus("저장 중...", "saving");
+  try {
+    const res = await fetch("/api/profile/narrative", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ narrative: val }),
+    });
+    if (!res.ok) throw new Error("save failed");
+    _narrativeLastSaved = val;
+    _setNarrativeStatus("저장됨 · AI 추천 갱신 중...", "saved");
+    // 저장 후 재추천 (LLM rerank 2~3초)
+    await loadPlan();
+    setTimeout(() => _setNarrativeStatus(""), 1500);
+  } catch (e) {
+    console.error("narrative save failed:", e);
+    _setNarrativeStatus("저장 실패", "");
+  }
+}
+
+function _setupNarrativeListener() {
+  const ta = document.getElementById("plan-narrative");
+  if (!ta || ta.dataset.bound) return;
+  ta.dataset.bound = "1";
+  ta.addEventListener("input", () => {
+    _setNarrativeStatus("입력 중...");
+    if (_narrativeSaveTimer) clearTimeout(_narrativeSaveTimer);
+    _narrativeSaveTimer = setTimeout(_saveNarrativeAndReloadPlan, 800);
+  });
+}
+
 // 큐레이션 모드: 슬라이더 UI 제거. 백엔드 default 가중치를 그대로 사용.
 // (이전 슬라이더 함수들은 호출처가 없어졌으므로 제거)
 
@@ -5215,6 +5322,27 @@ function renderPlan(plan) {
   const validIds = new Set(plan.recommendations.map(r => r.announcement_id));
   for (const id of Array.from(_planPicked)) if (!validIds.has(id)) _planPicked.delete(id);
 
+  // Phase 10: 서버 응답의 narrative_context 로 textarea 초기 채우기 (사용자가 이미
+  // 입력한 후에는 덮어쓰지 않음 — _narrativeLastSaved 비교)
+  const ta = document.getElementById("plan-narrative");
+  if (ta) {
+    const serverNarr = (plan.narrative_context || "").trim();
+    if (ta.value === "" && serverNarr) {
+      ta.value = serverNarr;
+      _narrativeLastSaved = serverNarr;
+    } else if (_narrativeLastSaved === "") {
+      _narrativeLastSaved = ta.value.trim();
+    }
+    _setupNarrativeListener();
+    // rerank 적용됐으면 status 에 표시
+    if (plan.rerank && plan.rerank.applied) {
+      const cachedTag = plan.rerank.cached ? " (캐시)" : "";
+      _setNarrativeStatus(`✨ 당신의 상황 반영${cachedTag}`, "saved");
+    } else {
+      _setNarrativeStatus("");
+    }
+  }
+
   body.innerHTML =
     `<div class="plan-cards">` + plan.recommendations.map((r, i) =>
       _renderPlanCard(r, i + 1)).join("") + `</div>` +
@@ -5228,8 +5356,13 @@ function renderPlan(plan) {
 }
 
 async function _fetchPlanNarrativesAsync(plan) {
-  // 각 카드에 loading placeholder 표시
+  // Phase 10: rerank 사유가 모든 카드에 이미 있으면 narrative API 호출 skip (중복 LLM 방지)
+  const allHaveReason = plan.recommendations.length > 0
+    && plan.recommendations.every(r => r.narrative_reason);
+  if (allHaveReason) return;
+  // 각 카드에 loading placeholder 표시 (이미 rerank 사유 있는 카드는 그대로)
   for (const r of plan.recommendations) {
+    if (r.narrative_reason) continue;
     const slot = document.getElementById(`plan-narrative-${r.announcement_id}`);
     if (slot) slot.innerHTML = `<div class="plan-narrative loading"><span class="nv-icon">✨</span><span class="nv-text">AI 추천 이유 분석 중...</span></div>`;
   }
@@ -5250,6 +5383,7 @@ async function _fetchPlanNarrativesAsync(plan) {
     const data = await res.json();
     const narratives = data.narratives || {};
     for (const r of plan.recommendations) {
+      if (r.narrative_reason) continue;  // rerank 사유 우선 (덮어쓰지 않음)
       const slot = document.getElementById(`plan-narrative-${r.announcement_id}`);
       if (!slot) continue;
       const why = narratives[String(r.announcement_id)];
@@ -6073,7 +6207,11 @@ function _renderPlanCard(r, rank) {
         </div>
       </div>
 
-      <div id="plan-narrative-${r.announcement_id}"></div>
+      <div id="plan-narrative-${r.announcement_id}">${
+        r.narrative_reason
+          ? `<div class="plan-narrative-reason"><span class="pnr-icon">✨</span><span class="pnr-text">${escapeHtml(r.narrative_reason)}</span></div>`
+          : ""
+      }</div>
 
       <div class="plan-section">
         <div class="plan-section-label">✓ 자격 매칭</div>

@@ -95,12 +95,13 @@ _EFFORT_BY_TYPE = {
 
 
 def _estimate_effort(req_doc_count: int, type_code: str) -> int:
-    """0~30 점."""
-    base = _EFFORT_BY_TYPE.get(type_code, 12)
-    if req_doc_count >= 6:   base += 5
-    elif req_doc_count >= 4: base += 3
-    elif req_doc_count <= 1: base -= 2
-    return max(0, min(30, base))
+    """0~30 점. Phase 10: 서류 수는 영향 X — 유형 base 만 사용.
+
+    req_doc_count 인자는 backward-compat 위해 유지 (호출처는 그대로). 의도: 서류 보유
+    여부가 추천 순위에 영향 주지 않게 하기 (사용자가 자연어 컨텍스트로 서류 부담을
+    표현할 수 있고, 유형별 base 만으로도 일/멘토링 등 일반적 노력 강도가 잡힘).
+    """
+    return _EFFORT_BY_TYPE.get(type_code, 12)
 
 
 def _effort_label(score: int) -> str:
@@ -162,6 +163,196 @@ _NARRATIVE_SCHEMA: dict = {
     "required": ["narratives"],
     "additionalProperties": False,
 }
+
+
+# ─── Phase 10: 자연어 컨텍스트 기반 LLM rerank (Top N 후보 → Top 5) ────
+# 사용자가 자기 상황을 자유 형식으로 적으면, 자격/light score 로 좁힌 후보 N개를
+# 받아 그 컨텍스트에 가장 적합한 Top top_n 을 골라 사유와 함께 반환한다.
+# 서류 보유 정보는 입력에서 제외 (사용자 의도: 서류 영향 X).
+
+_RERANK_SYSTEM = """당신은 한국 정부 창업지원사업 추천 컨설턴트입니다.
+사용자의 자유 형식 상황 설명과 자격을 통과한 후보 공고들을 받으면,
+사용자 상황에 가장 적합한 Top {top_n} 을 골라 사유와 함께 반환합니다.
+
+엄격히 지켜야 할 규칙:
+1. 자격 매칭(지역/업종/사업자 유형)은 이미 통과한 공고들입니다. 적합도로만 판단하세요.
+2. 단정 금지: "베스트", "반드시 신청", "최고" 같은 표현 금지. 측면별 매칭 포인트만 짚으세요.
+3. 사용자 컨텍스트의 명시적 우선순위(예: "매출 인증 가능한 곳 위주") 를 최우선으로 반영.
+4. 사유는 한 문장(50~80자). 사용자 컨텍스트 구절을 자연스럽게 인용하세요.
+5. 보유 서류는 고려하지 마세요 (입력에 없음). 자격·내용·유형·금액 기준으로만.
+6. 응답은 반드시 정확히 {top_n} 건. ann_id 는 후보 목록에 있는 것만 사용."""
+
+
+_RERANK_USER_TMPL = """## 사용자 자유 형식 상황 설명
+{narrative}
+
+## 사용자 프로필 (참고)
+{profile_json}
+
+## 자격 통과 후보 ({n}건)
+{cards}
+
+위 후보 중 사용자 상황에 가장 적합한 {top_n}건을 골라 ann_id 와 한 문장 사유를 반환하세요.
+"""
+
+
+def _make_rerank_schema(top_n: int) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "picks": {
+                "type": "array",
+                "minItems": top_n,
+                "maxItems": top_n,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "announcement_id": {"type": "integer"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["announcement_id", "reason"],
+                },
+            },
+        },
+        "required": ["picks"],
+    }
+
+
+def _card_for_rerank(r: dict) -> str:
+    """rerank 입력용 카드 — 서류 정보 X, 내용·유형·금액·자격 매칭만."""
+    s = r.get("signals") or {}
+    parts = [
+        f"id={r['announcement_id']}",
+        f"제목={r.get('title', '')[:80]}",
+        f"유형={r.get('type', {}).get('label', '')}",
+        f"마감=D-{r.get('days_left')}",
+        f"지원금={s.get('amount_display') or '미상'}",
+        f"노력={s.get('effort_label')}",
+        f"자격적합={r.get('profile_fit', {}).get('score', 0)}점",
+    ]
+    matched = s.get("industry_tags") or []
+    hits = s.get("industry_hits") or []
+    if matched:
+        labels = [INDUSTRY_TAGS.get(t, {}).get("label", t) for t in matched]
+        kw_str = f" ({', '.join(hits[:3])})" if hits else ""
+        parts.append(f"분야매칭={'/'.join(labels)}{kw_str}")
+    dept = r.get("department") or ""
+    if dept:
+        parts.append(f"부서={dept[:30]}")
+    return "- " + " | ".join(parts)
+
+
+def _rerank_cache_key(user_id: int, narrative: str, candidate_ids: list[int]) -> str:
+    """시스템 프롬프트 + 사용자 자연어 + 후보 조합 기반 키.
+    프롬프트 수정 시 자동 invalidate, 같은 narrative + 같은 후보 = 캐시 hit."""
+    sys_hash = hashlib.sha256(_RERANK_SYSTEM.encode("utf-8")).hexdigest()[:6]
+    narr_hash = hashlib.sha256(narrative.strip().encode("utf-8")).hexdigest()[:8]
+    cand_str = ",".join(str(x) for x in sorted(candidate_ids))
+    raw = "|".join([sys_hash, str(user_id), narr_hash, cand_str])
+    h = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"plan_rerank_{user_id}_{h}"
+
+
+def rerank_by_narrative(
+    user_id: int,
+    candidates: list[dict],
+    narrative: str,
+    profile: Optional[dict] = None,
+    *,
+    top_n: int = 5,
+    use_cache: bool = True,
+) -> dict:
+    """사용자 자연어 컨텍스트로 후보를 재정렬해 Top top_n 을 반환.
+
+    Args:
+        candidates: compose_action_plan 의 recommendations 형태 (detail 매칭 완료)
+        narrative: 사용자 자유 형식 상황 설명
+        profile: 사용자 프로필 (PII 필터링은 _profile_for_narrative 가 처리)
+        top_n: 최종 반환할 추천 개수
+
+    Returns:
+        {
+          "picked_ids": [int,...],      # 순서대로 Top top_n
+          "reasons":    {ann_id: str},  # 각 추천 사유
+          "cached":     bool,
+          "fallback":   bool,           # LLM 실패 또는 narrative 빈 경우 True
+        }
+    """
+    from .analyzer.llm.base import LLMError
+    from .analyzer.llm.registry import get_llm_provider
+    from .analyzer.storage import load_derived, save_derived
+
+    narrative = (narrative or "").strip()
+    if not narrative or not candidates:
+        return {"picked_ids": [], "reasons": {}, "cached": False, "fallback": True}
+
+    candidate_ids = [int(c["announcement_id"]) for c in candidates]
+    cache_key = _rerank_cache_key(user_id, narrative, candidate_ids)
+
+    if use_cache:
+        cached = load_derived(cache_key)
+        if cached and isinstance(cached, dict) and "picked_ids" in cached:
+            return {**cached, "cached": True, "fallback": False}
+
+    profile_safe = _profile_for_narrative(profile)
+    user_msg = _RERANK_USER_TMPL.format(
+        narrative=narrative[:1000],  # 너무 긴 입력 방어
+        profile_json=json.dumps(profile_safe, ensure_ascii=False),
+        n=len(candidates),
+        top_n=top_n,
+        cards="\n".join(_card_for_rerank(c) for c in candidates),
+    )
+
+    provider = get_llm_provider()
+    try:
+        result = provider.complete(
+            system=_RERANK_SYSTEM.format(top_n=top_n),
+            user=user_msg,
+            response_schema=_make_rerank_schema(top_n),
+            max_tokens=800,
+        )
+    except (LLMError, Exception) as e:  # noqa: BLE001
+        # LLM 실패 시 후보 상위 top_n 으로 fallback
+        fallback_ids = candidate_ids[:top_n]
+        return {
+            "picked_ids": fallback_ids,
+            "reasons": {},
+            "cached": False,
+            "fallback": True,
+            "error": str(e)[:200],
+        }
+
+    if not isinstance(result, dict):
+        return {"picked_ids": candidate_ids[:top_n], "reasons": {}, "cached": False, "fallback": True}
+
+    picks = result.get("picks") or []
+    picked_ids: list[int] = []
+    reasons: dict[int, str] = {}
+    valid_set = set(candidate_ids)
+    for p in picks:
+        try:
+            aid = int(p["announcement_id"])
+            if aid not in valid_set or aid in picked_ids:
+                continue  # LLM hallucination 방어
+            picked_ids.append(aid)
+            reason = str(p.get("reason", "")).strip()
+            if reason:
+                reasons[aid] = reason
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    # LLM 이 top_n 보다 적게 반환했을 때 후보로 채우기
+    if len(picked_ids) < top_n:
+        for cid in candidate_ids:
+            if cid not in picked_ids:
+                picked_ids.append(cid)
+                if len(picked_ids) >= top_n:
+                    break
+
+    picked_ids = picked_ids[:top_n]
+    output = {"picked_ids": picked_ids, "reasons": reasons}
+    save_derived(cache_key, output)
+    return {**output, "cached": False, "fallback": False}
 
 
 def _narrative_cache_key(user_id: int, ann_ids: list[int], weights: dict) -> str:
@@ -834,6 +1025,7 @@ def generate_single_announcement_guide(
 _PLAN_PROFILE_FIELDS = (
     "business_type", "establishment_date", "region", "industry",
     "company_name", "founding_type", "interest_tags", "industry_detail",
+    "narrative_context",  # Phase 10: 사용자 자연어 컨텍스트
 )
 
 
@@ -968,8 +1160,12 @@ def compose_action_plan(
     user_id: int,
     top_n: int = 5,
     weights: Optional[dict] = None,
+    narrative: Optional[str] = None,
 ) -> dict:
     """사용자별 Top N 추천 공고 + 각 공고의 부족 서류 + 발급 태스크 반환.
+
+    Phase 10: narrative (자연어 컨텍스트) 가 있으면 후보를 6배(top_n*6) 로 늘리고
+    detail 매칭 후 LLM 으로 rerank → 최종 Top top_n. 없으면 기존 light score 그대로.
 
     weights (0~1, default 0.5 / 0.3 / 0.5 / 0.7):
       - amount:   지원금 규모 중요도 (1=고액 위주, 0=무시)
@@ -1065,7 +1261,11 @@ def compose_action_plan(
         scored.append((combined_light, days_left, a, fit, raw_meta, type_info, signals_light))
 
     scored.sort(key=lambda x: (-x[0], x[1]))
-    top = scored[:top_n]
+    # Phase 10: narrative 가 있으면 LLM rerank 를 위해 후보를 넉넉히 잡음 (top_n*6).
+    # detail 매칭 비용 증가는 있지만 LLM 호출은 1회뿐이라 비용 영향 미미.
+    narrative_clean = (narrative or "").strip()
+    candidate_n = top_n * 6 if narrative_clean else top_n
+    top = scored[:candidate_n]
 
     # ── 2단계: Top N 서류 매칭 detail + effort 보정 ──
     recommendations: list[dict] = []
@@ -1152,6 +1352,39 @@ def compose_action_plan(
             "issue_tasks": issue_tasks,
         })
 
+    # Phase 10: narrative 가 있으면 LLM rerank → 후보 30 중 Top top_n 선별 + 사유.
+    # 실패/없음 시 기존 light score 순서 유지 (best-effort).
+    rerank_meta: dict = {"applied": False, "fallback": False, "cached": False, "narrative_len": len(narrative_clean)}
+    if narrative_clean and len(recommendations) > top_n:
+        try:
+            rerank_out = rerank_by_narrative(
+                user_id, recommendations, narrative_clean, profile, top_n=top_n,
+            )
+            picked_ids = rerank_out.get("picked_ids") or []
+            reasons = rerank_out.get("reasons") or {}
+            if picked_ids:
+                id_to_rec = {int(r["announcement_id"]): r for r in recommendations}
+                reordered: list[dict] = []
+                for aid in picked_ids:
+                    r = id_to_rec.get(int(aid))
+                    if not r:
+                        continue
+                    if reasons.get(int(aid)):
+                        r["narrative_reason"] = reasons[int(aid)]
+                    reordered.append(r)
+                if reordered:
+                    recommendations = reordered
+                    rerank_meta["applied"] = True
+                    rerank_meta["cached"] = bool(rerank_out.get("cached"))
+                    rerank_meta["fallback"] = bool(rerank_out.get("fallback"))
+        except Exception as e:  # noqa: BLE001
+            # rerank 실패해도 추천은 동작 — best-effort
+            rerank_meta["fallback"] = True
+            rerank_meta["error"] = str(e)[:200]
+    # narrative 없거나 후보 부족이면 light score 상위 top_n 으로 잘라 그대로 반환
+    if not rerank_meta["applied"]:
+        recommendations = recommendations[:top_n]
+
     # Step 6: 분석된 PDF 의 일정 항목을 각 recommendation 에 첨부.
     # 이미 분석 완료된 공고만 채워지고, 미완료/없음은 빈 배열.
     # 프론트가 _buildPlanTimeline 에 이 데이터를 흘려 캘린더 후보로 활용.
@@ -1185,6 +1418,8 @@ def compose_action_plan(
             "industry": w_industry,
         },
         "interest_tags": interest_tags,
+        "narrative_context": narrative_clean or None,
+        "rerank": rerank_meta,
         "recommendations": recommendations,
     }
 

@@ -400,6 +400,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/profile":
             self._handle_profile_save()
             return
+        if path == "/api/profile/narrative":
+            self._handle_profile_narrative_save()
+            return
         if path == "/api/my-docs":
             self._handle_my_docs_save()
             return
@@ -623,8 +626,23 @@ class Handler(BaseHTTPRequestHandler):
             "urgency":  _f("w_urgency",  0.5),
             "industry": _f("w_industry", 0.7),
         }
+        # Phase 10: 사용자 자연어 컨텍스트 — query 파라미터 우선, 없으면 DB 에서 자동 로드
+        narrative = ((qs.get("narrative") or [""])[0] or "").strip()
+        if not narrative:
+            try:
+                with db.connect() as conn:
+                    row = conn.execute(
+                        "SELECT narrative_context FROM user_profiles WHERE user_id=?",
+                        (user_id,),
+                    ).fetchone()
+                    if row and row["narrative_context"]:
+                        narrative = row["narrative_context"].strip()
+            except Exception:  # noqa: BLE001
+                pass
         try:
-            plan = compose_action_plan(user_id, top_n=top_n, weights=weights)
+            plan = compose_action_plan(
+                user_id, top_n=top_n, weights=weights, narrative=narrative or None,
+            )
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": f"plan 생성 실패: {e}"}, status=500)
             return
@@ -3510,6 +3528,44 @@ class Handler(BaseHTTPRequestHandler):
             elif v is None:
                 response_profile[f] = []
         self._send_json({"ok": True, "profile": response_profile})
+
+    def _handle_profile_narrative_save(self) -> None:
+        """Phase 10: 자유 형식 컨텍스트 저장 (AI 추천 LLM rerank 입력).
+
+        Body: {"narrative": str} — 빈 문자열이면 NULL 로 초기화.
+        Response: {"ok": True, "narrative": "...", "length": int}
+        """
+        user_id = self._require_user_id()
+        if user_id is None: return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            self._send_json({"error": f"invalid JSON: {e}"}, status=400)
+            return
+
+        narrative = (data.get("narrative") or "").strip()
+        if len(narrative) > 2000:
+            narrative = narrative[:2000]
+        value = narrative or None
+
+        with db.connect() as conn:
+            # user_profiles row 가 없으면 INSERT, 있으면 UPDATE
+            existing = conn.execute(
+                "SELECT user_id FROM user_profiles WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE user_profiles SET narrative_context=? WHERE user_id=?",
+                    (value, user_id),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO user_profiles (user_id, narrative_context) VALUES (?, ?)",
+                    (user_id, value),
+                )
+        self._send_json({"ok": True, "narrative": narrative, "length": len(narrative)})
 
     # ─── 보유 서류 (Phase 6: localStorage → DB) ────────────────────────────
     def _handle_my_docs_list(self) -> None:
