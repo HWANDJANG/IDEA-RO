@@ -174,13 +174,44 @@ _RERANK_SYSTEM = """당신은 한국 정부 창업지원사업 추천 컨설턴�
 사용자의 자유 형식 상황 설명과 자격을 통과한 후보 공고들을 받으면,
 사용자 상황에 가장 적합한 Top {top_n} 을 골라 사유와 함께 반환합니다.
 
-엄격히 지켜야 할 규칙:
+[엄격히 지켜야 할 규칙]
 1. 자격 매칭(지역/업종/사업자 유형)은 이미 통과한 공고들입니다. 적합도로만 판단하세요.
 2. 단정 금지: "베스트", "반드시 신청", "최고" 같은 표현 금지. 측면별 매칭 포인트만 짚으세요.
 3. 사용자 컨텍스트의 명시적 우선순위(예: "매출 인증 가능한 곳 위주") 를 최우선으로 반영.
 4. 사유는 한 문장(50~80자). 사용자 컨텍스트 구절을 자연스럽게 인용하세요.
 5. 보유 서류는 고려하지 마세요 (입력에 없음). 자격·내용·유형·금액 기준으로만.
-6. 응답은 반드시 정확히 {top_n} 건. ann_id 는 후보 목록에 있는 것만 사용."""
+6. 응답은 반드시 정확히 {top_n} 건. ann_id 는 후보 목록에 있는 것만 사용.
+
+[사용자 표현 → 매칭 우선순위 가이드 — 반드시 적용]
+사용자 컨텍스트에 다음 표현이 있으면 해당 카테고리/조건 공고를 우선 선택하세요.
+본문 발췌의 키워드도 함께 확인해 매칭하세요.
+
+A. 카테고리 매칭:
+  - "입주공간/사무실/공간/시설/임대" 필요 → space (입주·공간) 카테고리 우선
+  - "직접 자금/지원금/사업화 자금/투자/바우처/보조금" → funding 카테고리 우선
+  - "기술 개발/연구/R&D/시제품/실증" → rnd 카테고리 우선
+  - "수출/해외/글로벌/판로/바이어" → global 카테고리 우선
+  - "멘토링/컨설팅/교육/강의/아카데미" → edu 카테고리 우선
+  - "액셀러레이팅/오픈이노베이션/배치/스튜디오/네트워킹/경진대회/공모전" → event 카테고리 우선
+
+B. 마감/시간 매칭:
+  - "급함/시간 부족/빠르게/마감 임박" → 마감 임박 (D-day 작은 거) 우선
+  - "준비 시간 많이 필요/여유 있게/천천히/꼼꼼히 준비" → D-day 큰 거 (마감 멀리 있는 거) 우선
+
+C. 노력/규모 매칭:
+  - "쉽게/가볍게/간단한 것" → 노력 '낮음' 우선
+  - "큰 자금/대형 사업/규모 있는" → 지원금 큰 거 우선
+  - "작게 시작/소규모/예비" → 작은 규모/입문용 우선
+
+D. 부정 표현 (제외):
+  - "X는 빼고/싫어/제외" 표현 있으면 그 카테고리/조건은 후순위로 밀어주세요
+  - 예: "액셀러레이팅 빼고" → event 카테고리 후순위
+
+[자유 형식이 모호하면]
+가중치 기본값 (지원금·마감·노력 균형) 으로 일반 추천.
+
+[자유 형식이 비었으면]
+이 시점엔 호출 안 됨 (백엔드가 skip)."""
 
 
 _RERANK_USER_TMPL = """## 사용자 자유 형식 상황 설명
@@ -219,7 +250,8 @@ def _make_rerank_schema(top_n: int) -> dict:
 
 
 def _card_for_rerank(r: dict) -> str:
-    """rerank 입력용 카드 — 서류 정보 X, 내용·유형·금액·자격 매칭만."""
+    """rerank 입력용 카드 — 서류 정보 X, 내용·유형·금액·자격 매칭만.
+    본문 발췌 200자 포함 → LLM 이 '입주/멘토링' 같은 자유 형식 키워드와 직접 매칭."""
     s = r.get("signals") or {}
     parts = [
         f"id={r['announcement_id']}",
@@ -239,7 +271,13 @@ def _card_for_rerank(r: dict) -> str:
     dept = r.get("department") or ""
     if dept:
         parts.append(f"부서={dept[:30]}")
-    return "- " + " | ".join(parts)
+    main = "- " + " | ".join(parts)
+    # 본문 발췌 200자 — 줄바꿈/연속 공백 정리해서 토큰 절약
+    preview = (r.get("content_preview") or "").strip()
+    if preview:
+        preview = " ".join(preview.split())[:200]
+        main += f"\n    본문: {preview}"
+    return main
 
 
 def _rerank_cache_key(user_id: int, narrative: str, candidate_ids: list[int]) -> str:
@@ -1265,7 +1303,47 @@ def compose_action_plan(
     # detail 매칭 비용 증가는 있지만 LLM 호출은 1회뿐이라 비용 영향 미미.
     narrative_clean = (narrative or "").strip()
     candidate_n = top_n * 6 if narrative_clean else top_n
-    top = scored[:candidate_n]
+
+    if narrative_clean:
+        # Phase 10b: 카테고리 분산 — 한 카테고리(예: funding) 에 후보가 쏠리면
+        # 사용자가 "입주공간 필요" 라고 적어도 후보에 space 가 없을 수 있음.
+        # → 각 카테고리에서 최소 N건 확보 + 나머지는 score 순.
+        per_cat_min = {
+            "funding": 3, "rnd": 3, "space": 3, "edu": 3,
+            "global": 2, "event": 3, "other": 1,
+        }
+        chosen: list = []
+        chosen_keys: set = set()  # 중복 방지
+        by_cat: dict[str, list] = {}
+        for item in scored:
+            t = item[5]  # type_info
+            code = (t or {}).get("code") or "other"
+            by_cat.setdefault(code, []).append(item)
+
+        # 1) 카테고리별 최소 quota 충족
+        for code, n_min in per_cat_min.items():
+            for item in by_cat.get(code, [])[:n_min]:
+                key = id(item)
+                if key in chosen_keys:
+                    continue
+                chosen.append(item)
+                chosen_keys.add(key)
+
+        # 2) 남은 자리는 전체 score 순으로 채움
+        for item in scored:
+            if len(chosen) >= candidate_n:
+                break
+            key = id(item)
+            if key in chosen_keys:
+                continue
+            chosen.append(item)
+            chosen_keys.add(key)
+
+        # 3) score 순 재정렬 (LLM 입력 가독성)
+        chosen.sort(key=lambda x: (-x[0], x[1]))
+        top = chosen[:candidate_n]
+    else:
+        top = scored[:candidate_n]
 
     # ── 2단계: Top N 서류 매칭 detail + effort 보정 ──
     recommendations: list[dict] = []
@@ -1350,6 +1428,8 @@ def compose_action_plan(
             "expiring_docs": expiring_docs,
             "expired_docs": expired_docs,
             "issue_tasks": issue_tasks,
+            # Phase 10b: rerank LLM 입력용 본문 발췌 (200자). 카드에는 노출 X.
+            "content_preview": (a.get("content_text") or "")[:200],
         })
 
     # Phase 10: narrative 가 있으면 LLM rerank → 후보 30 중 Top top_n 선별 + 사유.
