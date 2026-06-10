@@ -300,9 +300,12 @@ CREATE INDEX IF NOT EXISTS idx_ext_cal_user ON external_calendar_events(user_id)
 
 @contextmanager
 def connect(db_path: Path = DB_PATH):
-    conn = sqlite3.connect(db_path)
+    # timeout=30: lock 충돌 시 30초까지 대기 후 OperationalError (default 5초로는 부족)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # busy_timeout (밀리초) — 동시 write 충돌 시 SQLite 가 자동 재시도하는 시간
+    conn.execute("PRAGMA busy_timeout = 30000")
     try:
         yield conn
         conn.commit()
@@ -461,6 +464,13 @@ def ensure_default_folder_for_user(conn: sqlite3.Connection, user_id: int) -> in
 def init_db(db_path: Path = DB_PATH) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with connect(db_path) as conn:
+        # WAL 모드: read 와 write 동시 가능 — 'database is locked' 에러 거의 제거.
+        # 한 번 설정하면 영구 적용 (별도 -wal 파일 생성).
+        cur_mode = conn.execute("PRAGMA journal_mode").fetchone()
+        if cur_mode and cur_mode[0].lower() != "wal":
+            conn.execute("PRAGMA journal_mode = WAL")
+            new_mode = conn.execute("PRAGMA journal_mode").fetchone()
+            print(f"[db] journal_mode: {cur_mode[0]} → {new_mode[0]}")
         conn.executescript(SCHEMA)
         _apply_migrations(conn)
         # 기존 DB 의 file_hash UNIQUE 컬럼 제약 제거 (Phase 2.1)

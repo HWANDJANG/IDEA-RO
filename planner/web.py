@@ -3554,8 +3554,10 @@ class Handler(BaseHTTPRequestHandler):
             narrative = narrative[:2000]
         value = narrative or None
 
-        conn = sqlite3.connect(DB_PATH)
+        # timeout=30: WAL 모드 + busy_timeout 으로 lock 거의 안 남지만 안전망
+        conn = sqlite3.connect(DB_PATH, timeout=30.0)
         try:
+            conn.execute("PRAGMA busy_timeout = 30000")
             # user_profiles row 가 없으면 INSERT, 있으면 UPDATE
             existing = conn.execute(
                 "SELECT user_id FROM user_profiles WHERE user_id=?", (user_id,)
